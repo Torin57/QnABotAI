@@ -1,0 +1,71 @@
+import { mistral } from "../mistral";
+import { qdrant, COLLECTION, VECTOR_SIZE } from "./client";
+
+export async function ensureCollection(): Promise<void> {
+  const { collections } = await qdrant.getCollections();
+  const exists = collections.some((c) => c.name === COLLECTION);
+  if (exists) return;
+
+  await qdrant.createCollection(COLLECTION, {
+    vectors: { size: VECTOR_SIZE, distance: "Cosine" },
+  });
+}
+
+export async function embedText(text: string): Promise<number[]> {
+  const response = await mistral.embeddings.create({
+    model: "mistral-embed",
+    inputs: [text],
+  });
+  return response.data[0].embedding!;
+}
+
+export async function upsertFaqItem(item: {
+  id: number;
+  question: string;
+  answer: string;
+}): Promise<void> {
+  const vector = await embedText(item.question);
+  await qdrant.upsert(COLLECTION, {
+    points: [
+      {
+        id: item.id,
+        vector,
+        payload: { id: item.id, question: item.question, answer: item.answer },
+      },
+    ],
+  });
+}
+
+export async function deleteFaqItem(id: number): Promise<void> {
+  try {
+    await qdrant.delete(COLLECTION, { points: [id] });
+  } catch {
+    // Collection may not exist yet — nothing to delete
+  }
+}
+
+export interface SearchResult {
+  id: number;
+  question: string;
+  answer: string;
+  score: number;
+}
+
+export async function searchFaq(
+  query: string,
+  topK = 3
+): Promise<SearchResult[]> {
+  const vector = await embedText(query);
+  const results = await qdrant.search(COLLECTION, {
+    vector,
+    limit: topK,
+    with_payload: true,
+  });
+
+  return results.map((r) => ({
+    id: r.payload!.id as number,
+    question: r.payload!.question as string,
+    answer: r.payload!.answer as string,
+    score: r.score,
+  }));
+}

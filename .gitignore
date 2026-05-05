@@ -5,6 +5,7 @@ node_modules/
 .next/
 logs.db
 qdrant_data/
+qdrant_storage/
 
 # SQLite lock/journal (если появятся рядом с logs.db)
 *.db-journal

@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(New-Item -ItemType Directory -Force -Path \"c:\\\\Cursor\\\\Projects\\\\OnlineSchoolFAQBot\\\\src\\\\app\")",
+      "PowerShell(New-Item -ItemType Directory -Force -Path \"c:\\\\Cursor\\\\Projects\\\\OnlineSchoolFAQBot\\\\src\\\\bot\")",
+      "PowerShell(New-Item -ItemType Directory -Force -Path \"c:\\\\Cursor\\\\Projects\\\\OnlineSchoolFAQBot\\\\src\\\\db\")",
+      "PowerShell(New-Item -ItemType Directory -Force -Path \"c:\\\\Cursor\\\\Projects\\\\OnlineSchoolFAQBot\\\\src\\\\lib\\\\qdrant\")",
+      "PowerShell(docker --version)",
+      "PowerShell(Invoke-RestMethod -Uri \"http://localhost:6333/\" 2>&1)",
+      "PowerShell(Invoke-RestMethod -Uri \"http://localhost:6333/collections\")"
+    ]
+  }
+}

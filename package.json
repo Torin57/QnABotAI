@@ -1,0 +1,45 @@
+{
+  "name": "onlineschoolfaqbot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "next dev",
+    "dev:server": "tsx server.ts",
+    "build": "next build",
+    "start": "tsx server.ts",
+    "lint": "next lint",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@mistralai/mistralai": "^2.2.1",
+    "@qdrant/js-client-rest": "^1.17.0",
+    "better-sqlite3": "^12.9.0",
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "^0.45.2",
+    "exceljs": "^4.4.0",
+    "grammy": "^1.42.0",
+    "mammoth": "^1.12.0",
+    "next": "^16.2.4",
+    "pdf-parse": "^2.4.5",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.2.4",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.6.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "autoprefixer": "^10.5.0",
+    "drizzle-kit": "^0.31.10",
+    "postcss": "^8.5.13",
+    "tailwindcss": "^4.2.4",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  }
+}
