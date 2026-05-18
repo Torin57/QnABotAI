@@ -1,10 +1,10 @@
 {
-  "name": "onlineschoolfaqbot",
+  "name": "faqbotai",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -H 127.0.0.1",
     "dev:server": "tsx server.ts",
     "build": "next build",
     "start": "tsx server.ts",

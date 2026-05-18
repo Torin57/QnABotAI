@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useId, useRef } from "react";
 
 interface FaqItem {
   id: number;
@@ -32,36 +32,86 @@ export default function FaqPage() {
   const [editQ, setEditQ] = useState("");
   const [editA, setEditA] = useState("");
   const [saving, setSaving] = useState(false);
-  const excelRef = useRef<HTMLInputElement>(null);
-  const docRef = useRef<HTMLInputElement>(null);
+  const excelInputId = useId();
+  const docInputId = useId();
+  const abortRef = useRef<AbortController | null>(null);
 
   const fetchItems = useCallback(async () => {
+    // Cancel any in-flight request
+    if (abortRef.current) {
+      abortRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    const runId = Date.now();
+    console.log(`[FAQ] fetchItems START #${runId}`, { dateFrom, dateTo });
+
     setLoading(true);
-    const params = new URLSearchParams();
-    if (dateFrom) params.set("dateFrom", dateFrom);
-    if (dateTo) params.set("dateTo", dateTo);
-    const res = await fetch(`/api/faq?${params}`);
-    setItems(await res.json());
-    setLoading(false);
+    try {
+      const params = new URLSearchParams();
+      if (dateFrom) params.set("dateFrom", dateFrom);
+      if (dateTo) params.set("dateTo", dateTo);
+      const res = await fetch(`/api/faq?${params}`, {
+        signal: controller.signal,
+        cache: "no-store",
+      });
+      console.log(`[FAQ] GET /api/faq response #${runId}`, {
+        ok: res.ok,
+        status: res.status,
+        contentType: res.headers.get("content-type"),
+      });
+      const raw = await res.json();
+      console.log(`[FAQ] GET /api/faq body #${runId}`, {
+        isArray: Array.isArray(raw),
+        length: Array.isArray(raw) ? raw.length : "N/A",
+      });
+      const data: FaqItem[] = Array.isArray(raw) ? raw : [];
+      setItems(data);
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        console.log(`[FAQ] fetchItems #${runId} ABORTED (stale)`);
+        return;
+      }
+      console.error(`[FAQ] fetchItems ERROR #${runId}`, err);
+      setItems([]);
+    } finally {
+      console.log(`[FAQ] fetchItems DONE #${runId}`);
+      setLoading(false);
+    }
   }, [dateFrom, dateTo]);
 
-  useEffect(() => { fetchItems(); }, [fetchItems]);
+  useEffect(() => {
+    fetchItems();
+    return () => {
+      if (abortRef.current) {
+        abortRef.current.abort();
+      }
+    };
+  }, [fetchItems]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
-    const body = new FormData();
-    body.append("file", file);
-    const res = await fetch("/api/faq/upload", { method: "POST", body });
-    const data = await res.json();
-    e.target.value = "";
-    setUploading(false);
-    if (res.ok) {
-      await fetchItems();
-      alert(`Загружено ${data.imported} пар Q&A`);
-    } else {
-      alert(`Ошибка: ${data.error}`);
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      const res = await fetch("/api/faq/upload", { method: "POST", body });
+      const data = await res.json();
+      e.target.value = "";
+      setUploading(false);
+      if (res.ok) {
+        console.log(`[FAQ] Upload OK, imported=${data.imported}, refetching...`);
+        await fetchItems();
+        alert(`Загружено ${data.imported} пар Q&A`);
+      } else {
+        alert(`Ошибка: ${data.error}`);
+      }
+    } catch (err) {
+      console.error("[FAQ] Upload ERROR", err);
+      setUploading(false);
+      alert("Ошибка при загрузке файла");
     }
   };
 
@@ -108,23 +158,21 @@ export default function FaqPage() {
 
       {/* Action bar */}
       <div className="flex flex-wrap gap-3 mb-5">
-        <button
-          onClick={() => excelRef.current?.click()}
-          disabled={uploading}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
+        <label
+          htmlFor={excelInputId}
+          className={`inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors ${uploading ? "pointer-events-none opacity-60" : "cursor-pointer"}`}
         >
           📊 {uploading ? "Загрузка..." : "Загрузить Excel"}
-        </button>
-        <input ref={excelRef} type="file" accept=".xlsx" onChange={handleUpload} className="hidden" />
+        </label>
+        <input id={excelInputId} type="file" accept=".xlsx" onChange={handleUpload} className="sr-only" />
 
-        <button
-          onClick={() => docRef.current?.click()}
-          disabled={uploading}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-60 transition-colors"
+        <label
+          htmlFor={docInputId}
+          className={`inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors ${uploading ? "pointer-events-none opacity-60" : "cursor-pointer"}`}
         >
           📄 {uploading ? "Загрузка..." : "Загрузить документ"}
-        </button>
-        <input ref={docRef} type="file" accept=".pdf,.docx" onChange={handleUpload} className="hidden" />
+        </label>
+        <input id={docInputId} type="file" accept=".pdf,.docx" onChange={handleUpload} className="sr-only" />
 
         <a
           href={exportUrl()}

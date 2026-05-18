@@ -8,18 +8,38 @@ const ALLOWED_TYPES = [
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 ];
 
+function mimeFromFileName(name: string): string | null {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".xlsx"))
+    return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  if (lower.endsWith(".docx"))
+    return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  if (lower.endsWith(".pdf")) return "application/pdf";
+  return null;
+}
+
+/** Браузеры часто отдают пустой или generic type; доверяем расширению после проверки allowlist. */
+function resolveEffectiveMime(file: File): string | null {
+  if (file.type && ALLOWED_TYPES.includes(file.type)) return file.type;
+  const inferred = mimeFromFileName(file.name);
+  if (inferred && ALLOWED_TYPES.includes(inferred)) return inferred;
+  return null;
+}
+
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
   const file = formData.get("file") as File | null;
 
   if (!file) return NextResponse.json({ error: "Файл не передан" }, { status: 400 });
-  if (!ALLOWED_TYPES.includes(file.type))
+
+  const effectiveMime = resolveEffectiveMime(file);
+  if (!effectiveMime)
     return NextResponse.json({ error: "Недопустимый тип файла" }, { status: 400 });
   if (file.size > MAX_SIZE)
     return NextResponse.json({ error: "Файл слишком большой (макс. 10 МБ)" }, { status: 400 });
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  const count = await processDocument(buffer, file.type, file.name);
+  const count = await processDocument(buffer, effectiveMime, file.name);
 
   return NextResponse.json({ imported: count });
 }
