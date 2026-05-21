@@ -94,14 +94,14 @@ export default function FaqPage() {
   };
 
   const publish = async (id: number) => {
+    setItems(prev => prev.map(item => item.id === id ? { ...item, status: "active" as const } : item));
     await fetch(`/api/faq/${id}/publish`, { method: "POST" });
-    fetchItems();
   };
 
   const remove = async (id: number) => {
     if (!confirm("Удалить эту запись?")) return;
+    setItems(prev => prev.filter(item => item.id !== id));
     await fetch(`/api/faq/${id}`, { method: "DELETE" });
-    fetchItems();
   };
 
   const startEdit = (item: FaqItem) => {
@@ -119,8 +119,10 @@ export default function FaqPage() {
       body: JSON.stringify({ question: editQ, answer: editA }),
     });
     setSaving(false);
+    setItems(prev => prev.map(item =>
+      item.id === editingId ? { ...item, question: editQ, answer: editA } : item
+    ));
     setEditingId(null);
-    fetchItems();
   };
 
   const exportUrl = () => {
