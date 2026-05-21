@@ -37,15 +37,11 @@ export default function FaqPage() {
   const abortRef = useRef<AbortController | null>(null);
 
   const fetchItems = useCallback(async () => {
-    // Cancel any in-flight request
     if (abortRef.current) {
       abortRef.current.abort();
     }
     const controller = new AbortController();
     abortRef.current = controller;
-
-    const runId = Date.now();
-    console.log(`[FAQ] fetchItems START #${runId}`, { dateFrom, dateTo });
 
     setLoading(true);
     try {
@@ -56,38 +52,21 @@ export default function FaqPage() {
         signal: controller.signal,
         cache: "no-store",
       });
-      console.log(`[FAQ] GET /api/faq response #${runId}`, {
-        ok: res.ok,
-        status: res.status,
-        contentType: res.headers.get("content-type"),
-      });
       const raw = await res.json();
-      console.log(`[FAQ] GET /api/faq body #${runId}`, {
-        isArray: Array.isArray(raw),
-        length: Array.isArray(raw) ? raw.length : "N/A",
-      });
       const data: FaqItem[] = Array.isArray(raw) ? raw : [];
       setItems(data);
     } catch (err: unknown) {
-      if (err instanceof DOMException && err.name === "AbortError") {
-        console.log(`[FAQ] fetchItems #${runId} ABORTED (stale)`);
-        return;
-      }
-      console.error(`[FAQ] fetchItems ERROR #${runId}`, err);
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      console.error("[FAQ] fetchItems ERROR", err);
       setItems([]);
     } finally {
-      console.log(`[FAQ] fetchItems DONE #${runId}`);
       setLoading(false);
     }
   }, [dateFrom, dateTo]);
 
   useEffect(() => {
     fetchItems();
-    return () => {
-      if (abortRef.current) {
-        abortRef.current.abort();
-      }
-    };
+    return () => { if (abortRef.current) abortRef.current.abort(); };
   }, [fetchItems]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -102,7 +81,6 @@ export default function FaqPage() {
       e.target.value = "";
       setUploading(false);
       if (res.ok) {
-        console.log(`[FAQ] Upload OK, imported=${data.imported}, refetching...`);
         await fetchItems();
         alert(`Загружено ${data.imported} пар Q&A`);
       } else {
@@ -316,7 +294,6 @@ export default function FaqPage() {
                           <button
                             onClick={() => publish(item.id)}
                             className="px-3 py-1 text-xs bg-green-500 text-white rounded-lg hover:bg-green-600 font-medium"
-                            title="Опубликовать в Qdrant"
                           >
                             ОК
                           </button>
@@ -324,7 +301,7 @@ export default function FaqPage() {
                             onClick={() => remove(item.id)}
                             className="px-3 py-1 text-xs bg-red-500 text-white rounded-lg hover:bg-red-600"
                           >
-                            Отмена
+                            Удалить
                           </button>
                           <button
                             onClick={() => startEdit(item)}

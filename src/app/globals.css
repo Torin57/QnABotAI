@@ -1,1 +1,36 @@
 @import "tailwindcss";
+
+@theme {
+  /* Основной акцент — приглушённый сине-серый */
+  --color-primary: oklch(0.44 0.03 255);
+  --color-primary-hover: oklch(0.38 0.03 255);
+
+  /* Вторичные кнопки (успех, удаление) */
+  --color-success: oklch(0.46 0.05 165);
+  --color-success-hover: oklch(0.4 0.05 165);
+  --color-danger: oklch(0.48 0.07 22);
+  --color-danger-hover: oklch(0.42 0.07 22);
+  --color-muted: oklch(0.52 0.02 255);
+  --color-muted-hover: oklch(0.46 0.02 255);
+
+  /* Фокус и режим редактирования */
+  --color-focus: oklch(0.62 0.03 255);
+  --color-edit: oklch(0.96 0.008 255);
+  --color-edit-border: oklch(0.78 0.02 255);
+
+  /* Бейджи статусов */
+  --color-badge-pending-bg: oklch(0.94 0.015 85);
+  --color-badge-pending: oklch(0.46 0.04 75);
+  --color-badge-active-bg: oklch(0.94 0.015 165);
+  --color-badge-active: oklch(0.42 0.05 165);
+  --color-badge-deleted-bg: oklch(0.94 0.015 22);
+  --color-badge-deleted: oklch(0.46 0.06 22);
+
+  /* Фон приложения */
+  --color-page: oklch(0.97 0.006 255);
+}
+
+body {
+  background-color: var(--color-page);
+  color: oklch(0.25 0.02 255);
+}

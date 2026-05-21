@@ -3,6 +3,7 @@ import { faqItems } from "@/db/schema";
 import { extractTextFromBuffer } from "./extractText";
 import { extractQAPairsFromText } from "./extractQA";
 import { parseExcelQA } from "./excel";
+import { upsertFaqItem } from "@/lib/qdrant";
 
 const EXCEL_MIME =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -25,13 +26,32 @@ export async function processDocument(
 
   if (pairs.length === 0) return 0;
 
-  await db.insert(faqItems).values(
-    pairs.map((p) => ({
-      question: p.question,
-      answer: p.answer,
-      sourceDocument: fileName,
-    }))
-  );
+  console.log(`[parser] inserting ${pairs.length} FAQ items into SQLite (source: ${fileName})`);
 
-  return pairs.length;
+  const inserted = await db
+    .insert(faqItems)
+    .values(
+      pairs.map((p) => ({
+        question: p.question,
+        answer: p.answer,
+        sourceDocument: fileName,
+        status: "active" as const,
+      }))
+    )
+    .returning({
+      id: faqItems.id,
+      question: faqItems.question,
+      answer: faqItems.answer,
+    });
+
+  console.log(`[parser] SQLite insert done, indexing ${inserted.length} items in Qdrant...`);
+
+  for (const item of inserted) {
+    console.log(`[parser] indexing id=${item.id} "${item.question.slice(0, 60)}..."`);
+    await upsertFaqItem({ id: item.id, question: item.question, answer: item.answer });
+  }
+
+  console.log(`[parser] Qdrant indexing complete (${inserted.length} items from ${fileName})`);
+
+  return inserted.length;
 }
