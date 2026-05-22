@@ -42,8 +42,6 @@ function FaqPage() {
   const [loading, setLoading] = useState(true);
   const [loadingUnanswered, setLoadingUnanswered] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editQ, setEditQ] = useState("");
   const [editA, setEditA] = useState("");
@@ -61,10 +59,7 @@ function FaqPage() {
 
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (dateFrom) params.set("dateFrom", dateFrom);
-      if (dateTo) params.set("dateTo", dateTo);
-      const res = await fetch(`/api/faq?${params}`, {
+      const res = await fetch(`/api/faq`, {
         signal: controller.signal,
         cache: "no-store",
       });
@@ -78,15 +73,12 @@ function FaqPage() {
     } finally {
       setLoading(false);
     }
-  }, [dateFrom, dateTo]);
+  }, []);
 
   const fetchUnanswered = useCallback(async () => {
     setLoadingUnanswered(true);
     try {
-      const params = new URLSearchParams();
-      if (dateFrom) params.set("dateFrom", dateFrom);
-      if (dateTo) params.set("dateTo", dateTo);
-      const res = await fetch(`/api/unanswered?${params}`, { cache: "no-store" });
+      const res = await fetch(`/api/unanswered`, { cache: "no-store" });
       const raw = await res.json();
       const data: UnansweredItem[] = Array.isArray(raw) ? raw : [];
       setUnanswered(data);
@@ -96,7 +88,7 @@ function FaqPage() {
     } finally {
       setLoadingUnanswered(false);
     }
-  }, [dateFrom, dateTo]);
+  }, []);
 
   useEffect(() => {
     if (tab === "main") {
@@ -108,6 +100,10 @@ function FaqPage() {
       if (abortRef.current) abortRef.current.abort();
     };
   }, [tab, fetchItems, fetchUnanswered]);
+
+  useEffect(() => {
+    fetchUnanswered();
+  }, [fetchUnanswered]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -169,13 +165,8 @@ function FaqPage() {
     setEditingId(null);
   };
 
-  const exportUrl = () => {
-    const params = new URLSearchParams();
-    if (dateFrom) params.set("dateFrom", dateFrom);
-    if (dateTo) params.set("dateTo", dateTo);
-    const base = tab === "unanswered" ? "/api/unanswered/export" : "/api/faq/export";
-    return `${base}?${params}`;
-  };
+  const exportUrl = () =>
+    tab === "unanswered" ? "/api/unanswered/export" : "/api/faq/export";
 
   const currentCount = tab === "unanswered" ? unanswered.length : items.length;
   const isLoading = tab === "unanswered" ? loadingUnanswered : loading;
@@ -276,35 +267,6 @@ function FaqPage() {
             </svg>
             Экспорт в Excel
           </a>
-        </div>
-
-        {/* Date filter */}
-        <div className="flex flex-wrap items-center gap-3 mb-5 px-4 py-3 bg-white rounded-xl border border-slate-200 shadow-sm">
-          <span className="text-sm font-medium text-slate-700">Период</span>
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-          />
-          <span className="text-slate-400">—</span>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-          />
-          {(dateFrom || dateTo) && (
-            <button
-              onClick={() => {
-                setDateFrom("");
-                setDateTo("");
-              }}
-              className="text-sm text-slate-500 hover:text-slate-900 transition-colors"
-            >
-              Сбросить
-            </button>
-          )}
         </div>
 
         {/* Table */}
