@@ -113,7 +113,16 @@ function FaqPage() {
       const body = new FormData();
       body.append("file", file);
       const res = await fetch("/api/faq/upload", { method: "POST", body });
-      const data = await res.json();
+      const bodyText = await res.text();
+      const data: { imported?: number; error?: string } = bodyText
+        ? (() => {
+            try {
+              return JSON.parse(bodyText);
+            } catch {
+              return { error: "Некорректный ответ сервера" };
+            }
+          })()
+        : { error: "Пустой ответ сервера" };
       e.target.value = "";
       setUploading(false);
       if (res.ok) {

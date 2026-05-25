@@ -39,7 +39,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Файл слишком большой (макс. 10 МБ)" }, { status: 400 });
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  const count = await processDocument(buffer, effectiveMime, file.name);
 
-  return NextResponse.json({ imported: count });
+  try {
+    const count = await processDocument(buffer, effectiveMime, file.name);
+    return NextResponse.json({ imported: count });
+  } catch (err) {
+    const statusCode =
+      err && typeof err === "object" && "statusCode" in err
+        ? (err as { statusCode: number }).statusCode
+        : null;
+
+    const message =
+      statusCode === 429
+        ? "Превышен лимит запросов к Mistral API. Попробуйте позже."
+        : "Ошибка при обработке файла";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

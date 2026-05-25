@@ -11,12 +11,36 @@ export async function ensureCollection(): Promise<void> {
   });
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function embedText(text: string): Promise<number[]> {
-  const response = await mistral.embeddings.create({
-    model: "mistral-embed",
-    inputs: [text],
-  });
-  return response.data[0].embedding!;
+  const maxRetries = 3;
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await mistral.embeddings.create({
+        model: "mistral-embed",
+        inputs: [text],
+      });
+      return response.data[0].embedding!;
+    } catch (err) {
+      lastError = err;
+      const statusCode =
+        err && typeof err === "object" && "statusCode" in err
+          ? (err as { statusCode: number }).statusCode
+          : null;
+      if (statusCode === 429 && attempt < maxRetries) {
+        await sleep(1000 * 2 ** attempt);
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw lastError;
 }
 
 export async function upsertFaqItem(item: {

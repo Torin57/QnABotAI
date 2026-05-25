@@ -41,3 +41,5 @@ Thumbs.db
 
 # --- IDE (локальные настройки) ---
 .idea/
+.claude/    
+.cursor/     
