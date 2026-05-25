@@ -5,6 +5,7 @@
 - [ ] Добавить индикатор обработки / индексации
 - [ ] Улучшить UX уведомлений
 - [ ] Довести redesign до консистентного состояния
+- [ ] Добавить bulk actions (checkbox + select all + delete)
 
 ## P2 — Важно позже
 
@@ -13,6 +14,9 @@
 - [ ] Observability / debug panel
 - [ ] Улучшение readability / accessibility
 - [ ] Спеки и архитектурная документация
+- [ ] Добавить soft duplicate detection
+- [ ] Подсветка возможных дублей
+- [ ] Продумать UX повторной загрузки FAQ
 
 ## P3 — Future / optional
 
@@ -22,4 +26,6 @@
 - [ ] Landing page
 - [ ] Multi-tenant
 - [ ] Mobile app
-
+- [ ] Semantic duplicate detection
+- [ ] Versioning FAQ
+- [ ] Conflict resolution
