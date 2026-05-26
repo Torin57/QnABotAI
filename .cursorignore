@@ -1,0 +1,65 @@
+# =========================
+# Secrets
+# =========================
+
+.env
+.env.*
+
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+
+.ssh/
+
+# =========================
+# Dependencies
+# =========================
+
+node_modules/
+
+# =========================
+# Build / generated output
+# =========================
+
+.next/
+out/
+build/
+dist/
+
+# =========================
+# Databases / vector storage
+# =========================
+
+*.db
+*.sqlite
+*.sqlite3
+
+qdrant_data/
+qdrant_storage/
+
+# =========================
+# Logs
+# =========================
+
+*.log
+
+# =========================
+# Git / IDE metadata
+# =========================
+
+.git/
+.idea/
+
+# =========================
+# Coverage / cache
+# =========================
+
+coverage/
+.nyc_output/
+
+.cache/
+.tmp/
+temp/
