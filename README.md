@@ -1,4 +1,4 @@
-# FAQBotAI — семантический FAQ-бот без галлюцинаций
+# QnABotAI — семантический FAQ-бот без галлюцинаций
 
 [![Stack](https://img.shields.io/badge/stack-Next.js%20%7C%20grammY%20%7C%20Qdrant-000?style=flat&logo=nextdotjs&logoColor=white)](https://nextjs.org/)
 [![DB](https://img.shields.io/badge/SQLite-Drizzle-003B57?style=flat)](https://orm.drizzle.team/)
@@ -82,8 +82,8 @@
 ### 1. Клонирование
 
 ```bash
-git clone <URL-вашего-репозитория> FAQBotAI
-cd FAQBotAI
+git clone <URL-вашего-репозитория> QnABotAI
+cd QnABotAI
 ```
 
 ### 2. Зависимости Node.js
