@@ -7,6 +7,18 @@
 - [ ] Довести redesign до консистентного состояния
 - [ ] Добавить bulk actions (checkbox + select all + delete)
 
+## P1.5 / Security foundation before public launch
+- [ ] Threat modeling для public SaaS режима
+- [ ] Безопасная обработка upload файлов
+- [ ] Ограничения размера и типа файлов
+- [ ] Upload isolation (non-public storage)
+- [ ] Валидация Excel / CSV импорта
+- [ ] Rate limiting
+- [ ] Tenant isolation
+- [ ] Basic audit logging
+- [ ] Secret separation (dev/staging/prod)
+- [ ] Admin panel hardening
+
 ## P2 — Важно позже
 
 - [ ] Поддержка картинок
