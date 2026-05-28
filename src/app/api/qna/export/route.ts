@@ -1,16 +1,16 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { faqItems } from "@/db/schema";
+import { qnaItems } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { exportFaqToExcel } from "@/lib/parser/excel";
+import { exportQnaToExcel } from "@/lib/parser/excel";
 
 export async function GET() {
-  const items = await db.query.faqItems.findMany({
-    where: eq(faqItems.status, "active"),
+  const items = await db.query.qnaItems.findMany({
+    where: eq(qnaItems.status, "active"),
     orderBy: (t, { asc }) => [asc(t.id)],
   });
 
-  const buffer = await exportFaqToExcel(
+  const buffer = await exportQnaToExcel(
     items.map((i) => ({
       question: i.question,
       answer: i.answer,
@@ -23,7 +23,7 @@ export async function GET() {
     headers: {
       "Content-Type":
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="faq-${Date.now()}.xlsx"`,
+      "Content-Disposition": `attachment; filename="qna-${Date.now()}.xlsx"`,
     },
   });
 }

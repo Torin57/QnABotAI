@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useId, useRef } from "react";
 
-interface FaqItem {
+interface QnaItem {
   id: number;
   question: string;
   answer: string;
@@ -11,19 +11,19 @@ interface FaqItem {
   createdAt: string;
 }
 
-const STATUS_LABEL: Record<FaqItem["status"], string> = {
+const STATUS_LABEL: Record<QnaItem["status"], string> = {
   pending: "Ожидание",
   active: "Активен",
   deleted: "Удалён",
 };
 
-const STATUS_CLASS: Record<FaqItem["status"], string> = {
+const STATUS_CLASS: Record<QnaItem["status"], string> = {
   pending: "bg-amber-50 text-amber-700 ring-amber-200",
   active: "bg-emerald-50 text-emerald-700 ring-emerald-200",
   deleted: "bg-rose-50 text-rose-700 ring-rose-200",
 };
 
-const STATUS_DOT: Record<FaqItem["status"], string> = {
+const STATUS_DOT: Record<QnaItem["status"], string> = {
   pending: "bg-amber-500",
   active: "bg-emerald-500",
   deleted: "bg-rose-500",
@@ -36,8 +36,8 @@ interface UnansweredItem {
   timestamp: string;
 }
 
-function FaqPage() {
-  const [items, setItems] = useState<FaqItem[]>([]);
+function QnaPage() {
+  const [items, setItems] = useState<QnaItem[]>([]);
   const [unanswered, setUnanswered] = useState<UnansweredItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingUnanswered, setLoadingUnanswered] = useState(false);
@@ -59,16 +59,16 @@ function FaqPage() {
 
     setLoading(true);
     try {
-      const res = await fetch(`/api/faq`, {
+      const res = await fetch(`/api/qna`, {
         signal: controller.signal,
         cache: "no-store",
       });
       const raw = await res.json();
-      const data: FaqItem[] = Array.isArray(raw) ? raw : [];
+      const data: QnaItem[] = Array.isArray(raw) ? raw : [];
       setItems(data);
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === "AbortError") return;
-      console.error("[FAQ] fetchItems ERROR", err);
+      console.error("[QnA] fetchItems ERROR", err);
       setItems([]);
     } finally {
       setLoading(false);
@@ -83,7 +83,7 @@ function FaqPage() {
       const data: UnansweredItem[] = Array.isArray(raw) ? raw : [];
       setUnanswered(data);
     } catch (err) {
-      console.error("[FAQ] fetchUnanswered ERROR", err);
+      console.error("[QnA] fetchUnanswered ERROR", err);
       setUnanswered([]);
     } finally {
       setLoadingUnanswered(false);
@@ -112,7 +112,7 @@ function FaqPage() {
     try {
       const body = new FormData();
       body.append("file", file);
-      const res = await fetch("/api/faq/upload", { method: "POST", body });
+      const res = await fetch("/api/qna/upload", { method: "POST", body });
       const bodyText = await res.text();
       const data: { imported?: number; error?: string } = bodyText
         ? (() => {
@@ -132,7 +132,7 @@ function FaqPage() {
         alert(`Ошибка: ${data.error}`);
       }
     } catch (err) {
-      console.error("[FAQ] Upload ERROR", err);
+      console.error("[QnA] Upload ERROR", err);
       setUploading(false);
       alert("Ошибка при загрузке файла");
     }
@@ -142,16 +142,16 @@ function FaqPage() {
     setItems((prev) =>
       prev.map((item) => (item.id === id ? { ...item, status: "active" as const } : item)),
     );
-    await fetch(`/api/faq/${id}/publish`, { method: "POST" });
+    await fetch(`/api/qna/${id}/publish`, { method: "POST" });
   };
 
   const remove = async (id: number) => {
     if (!confirm("Удалить эту запись?")) return;
     setItems((prev) => prev.filter((item) => item.id !== id));
-    await fetch(`/api/faq/${id}`, { method: "DELETE" });
+    await fetch(`/api/qna/${id}`, { method: "DELETE" });
   };
 
-  const startEdit = (item: FaqItem) => {
+  const startEdit = (item: QnaItem) => {
     setEditingId(item.id);
     setEditQ(item.question);
     setEditA(item.answer);
@@ -160,7 +160,7 @@ function FaqPage() {
   const saveEdit = async () => {
     if (!editingId) return;
     setSaving(true);
-    await fetch(`/api/faq/${editingId}`, {
+    await fetch(`/api/qna/${editingId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question: editQ, answer: editA }),
@@ -175,7 +175,7 @@ function FaqPage() {
   };
 
   const exportUrl = () =>
-    tab === "unanswered" ? "/api/unanswered/export" : "/api/faq/export";
+    tab === "unanswered" ? "/api/unanswered/export" : "/api/qna/export";
 
   const currentCount = tab === "unanswered" ? unanswered.length : items.length;
   const isLoading = tab === "unanswered" ? loadingUnanswered : loading;
@@ -190,7 +190,7 @@ function FaqPage() {
         <header className="flex flex-wrap items-end justify-between gap-4 mb-8">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-slate-900">База знаний</h1>
-            <p className="mt-1 text-sm text-slate-500">Модерация и публикация вопросов FAQ</p>
+            <p className="mt-1 text-sm text-slate-500">Модерация и публикация вопросов QnA</p>
           </div>
           <div className="text-sm text-slate-500">
             Всего записей:{" "}
@@ -488,4 +488,4 @@ function FaqPage() {
   );
 }
 
-export default FaqPage;
+export default QnaPage;

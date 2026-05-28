@@ -1,10 +1,10 @@
 import { Bot, InlineKeyboard } from "grammy";
 import { db } from "@/db";
 import { unansweredQueries } from "@/db/schema";
-import { ensureCollection, searchFaq } from "@/lib/qdrant";
+import { ensureCollection, searchQna } from "@/lib/qdrant";
 import { mistral } from "@/lib/mistral";
 
-const JUDGE_PROMPT = `Ты — ассистент выбора ответа из FAQ.
+const JUDGE_PROMPT = `Ты — ассистент выбора ответа из базы знаний.
 Тебе даны вопрос пользователя и список кандидатов из базы знаний.
 Выбери кандидата, чей вопрос точно отвечает на вопрос пользователя.
 Верни ТОЛЬКО числовой ID кандидата. Если ни один не подходит — верни слово NULL.`;
@@ -75,9 +75,9 @@ export function createBot() {
     console.log("[bot] user message:", userQuestion);
 
     try {
-      console.log("[bot] searching FAQ...");
+      console.log("[bot] searching QnA...");
 
-      const candidates = await searchFaq(userQuestion, 3);
+      const candidates = await searchQna(userQuestion, 3);
 
       console.log("[bot] candidates found:", candidates);
 

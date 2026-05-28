@@ -43,7 +43,7 @@ export async function embedText(text: string): Promise<number[]> {
   throw lastError;
 }
 
-export async function upsertFaqItem(item: {
+export async function upsertQnaItem(item: {
   id: number;
   question: string;
   answer: string;
@@ -60,7 +60,7 @@ export async function upsertFaqItem(item: {
   });
 }
 
-export async function deleteFaqItem(id: number): Promise<void> {
+export async function deleteQnaItem(id: number): Promise<void> {
   try {
     await qdrant.delete(COLLECTION, { points: [id] });
   } catch {
@@ -75,7 +75,7 @@ export interface SearchResult {
   score: number;
 }
 
-export async function searchFaq(
+export async function searchQna(
   query: string,
   topK = 3
 ): Promise<SearchResult[]> {

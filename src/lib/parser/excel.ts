@@ -19,11 +19,11 @@ export async function parseExcelQA(buffer: Buffer): Promise<QAPair[]> {
   return pairs;
 }
 
-export async function exportFaqToExcel(
+export async function exportQnaToExcel(
   items: { question: string; answer: string; sourceDocument: string; createdAt: Date }[]
 ): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet("FAQ");
+  const sheet = workbook.addWorksheet("QnA");
 
   sheet.columns = [
     { header: "question", key: "question", width: 50 },

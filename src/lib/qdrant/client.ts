@@ -5,5 +5,5 @@ export const qdrant = new QdrantClient({
   port: Number(process.env.QDRANT_PORT ?? 6333),
 });
 
-export const COLLECTION = "faq";
+export const COLLECTION = "qna";
 export const VECTOR_SIZE = 1024;
