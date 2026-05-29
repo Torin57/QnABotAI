@@ -107,7 +107,7 @@ function QnaPage() {
       setUploading(false);
       if (res.ok) {
         await fetchItems();
-        alert(`Загружено ${data.imported} пар Q&A`);
+        alert(`Загружено ${data.imported} пар вопрос-ответ`);
       } else {
         alert(`Ошибка: ${data.error}`);
       }

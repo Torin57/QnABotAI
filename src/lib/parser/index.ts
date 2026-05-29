@@ -16,7 +16,7 @@ export async function processDocument(
   let pairs: { question: string; answer: string }[];
 
   if (mimeType === EXCEL_MIME) {
-    // Excel: read Q&A columns directly, no LLM needed
+    // Excel: read question-answer columns directly, no LLM needed
     pairs = await parseExcelQA(buffer);
   } else {
     // PDF / DOCX: extract text then use LLM
