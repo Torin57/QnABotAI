@@ -1,6 +1,6 @@
 import { Bot, InlineKeyboard } from "grammy";
 import { db } from "@/db";
-import { unansweredQueries } from "@/db/schema";
+import { qnaItems } from "@/db/schema";
 import { ensureCollection, searchQna } from "@/lib/qdrant";
 import { mistral } from "@/lib/mistral";
 
@@ -70,7 +70,6 @@ export function createBot() {
 
   bot.on("message:text", async (ctx) => {
     const userQuestion = ctx.message.text;
-    const userId = String(ctx.from.id);
 
     console.log("[bot] user message:", userQuestion);
 
@@ -84,7 +83,7 @@ export function createBot() {
       if (candidates.length === 0) {
         console.log("[bot] no candidates found");
 
-        await logUnanswered(userId, userQuestion);
+        await logUnanswered(userQuestion);
 
         await ctx.reply(
           "Не нашёл ответа на ваш вопрос.",
@@ -103,7 +102,7 @@ export function createBot() {
       if (chosenId === null) {
         console.log("[bot] judge returned NULL");
 
-        await logUnanswered(userId, userQuestion);
+        await logUnanswered(userQuestion);
 
         await ctx.reply(
           "Не нашёл подходящего ответа в базе знаний.",
@@ -120,7 +119,7 @@ export function createBot() {
       if (!chosen) {
         console.log("[bot] chosen candidate not found in candidates");
 
-        await logUnanswered(userId, userQuestion);
+        await logUnanswered(userQuestion);
 
         await ctx.reply(
           "Не нашёл ответа.",
@@ -145,12 +144,12 @@ export function createBot() {
   return bot;
 }
 
-async function logUnanswered(userId: string, questionText: string) {
+async function logUnanswered(questionText: string) {
   console.log("[bot] logging unanswered question");
 
-  await db.insert(unansweredQueries).values({
-    userId,
-    questionText,
+  await db.insert(qnaItems).values({
+    question: questionText,
+    status: "unanswered",
   });
 }
 

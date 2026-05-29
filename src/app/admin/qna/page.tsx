@@ -2,51 +2,53 @@
 
 import { useState, useEffect, useCallback, useId, useRef } from "react";
 
+type Status = "unanswered" | "active" | "deleted";
+
 interface QnaItem {
   id: number;
   question: string;
-  answer: string;
-  sourceDocument: string;
-  status: "pending" | "active" | "deleted";
+  answer: string | null;
+  sourceDocument: string | null;
+  status: Status;
   createdAt: string;
 }
 
-const STATUS_LABEL: Record<QnaItem["status"], string> = {
-  pending: "Ожидание",
+const STATUS_LABEL: Record<Status, string> = {
+  unanswered: "Неотвечен",
   active: "Активен",
   deleted: "Удалён",
 };
 
-const STATUS_CLASS: Record<QnaItem["status"], string> = {
-  pending: "bg-amber-50 text-amber-700 ring-amber-200",
+const STATUS_CLASS: Record<Status, string> = {
+  unanswered: "bg-amber-50 text-amber-700 ring-amber-200",
   active: "bg-emerald-50 text-emerald-700 ring-emerald-200",
   deleted: "bg-rose-50 text-rose-700 ring-rose-200",
 };
 
-const STATUS_DOT: Record<QnaItem["status"], string> = {
-  pending: "bg-amber-500",
+const STATUS_DOT: Record<Status, string> = {
+  unanswered: "bg-amber-500",
   active: "bg-emerald-500",
   deleted: "bg-rose-500",
 };
 
-interface UnansweredItem {
-  id: number;
-  userId: string | number;
-  questionText: string;
-  timestamp: string;
-}
+type Filter = "all" | "unanswered" | "active" | "deleted";
+
+const FILTERS: { key: Filter; label: string }[] = [
+  { key: "all", label: "Все" },
+  { key: "unanswered", label: "Неотвеченные" },
+  { key: "active", label: "Активные" },
+  { key: "deleted", label: "Удалённые" },
+];
 
 function QnaPage() {
   const [items, setItems] = useState<QnaItem[]>([]);
-  const [unanswered, setUnanswered] = useState<UnansweredItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingUnanswered, setLoadingUnanswered] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editQ, setEditQ] = useState("");
   const [editA, setEditA] = useState("");
   const [saving, setSaving] = useState(false);
-  const [tab, setTab] = useState<"main" | "unanswered">("main");
+  const [filter, setFilter] = useState<Filter>("all");
   const excelInputId = useId();
   const docInputId = useId();
 
@@ -59,7 +61,8 @@ function QnaPage() {
 
     setLoading(true);
     try {
-      const res = await fetch(`/api/qna`, {
+      const query = filter === "all" ? "" : `?status=${filter}`;
+      const res = await fetch(`/api/qna${query}`, {
         signal: controller.signal,
         cache: "no-store",
       });
@@ -73,37 +76,14 @@ function QnaPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
-
-  const fetchUnanswered = useCallback(async () => {
-    setLoadingUnanswered(true);
-    try {
-      const res = await fetch(`/api/unanswered`, { cache: "no-store" });
-      const raw = await res.json();
-      const data: UnansweredItem[] = Array.isArray(raw) ? raw : [];
-      setUnanswered(data);
-    } catch (err) {
-      console.error("[QnA] fetchUnanswered ERROR", err);
-      setUnanswered([]);
-    } finally {
-      setLoadingUnanswered(false);
-    }
-  }, []);
+  }, [filter]);
 
   useEffect(() => {
-    if (tab === "main") {
-      fetchItems();
-    } else {
-      fetchUnanswered();
-    }
+    fetchItems();
     return () => {
       if (abortRef.current) abortRef.current.abort();
     };
-  }, [tab, fetchItems, fetchUnanswered]);
-
-  useEffect(() => {
-    fetchUnanswered();
-  }, [fetchUnanswered]);
+  }, [fetchItems]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -139,22 +119,20 @@ function QnaPage() {
   };
 
   const publish = async (id: number) => {
-    setItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, status: "active" as const } : item)),
-    );
     await fetch(`/api/qna/${id}/publish`, { method: "POST" });
+    await fetchItems();
   };
 
   const remove = async (id: number) => {
     if (!confirm("Удалить эту запись?")) return;
-    setItems((prev) => prev.filter((item) => item.id !== id));
     await fetch(`/api/qna/${id}`, { method: "DELETE" });
+    await fetchItems();
   };
 
   const startEdit = (item: QnaItem) => {
     setEditingId(item.id);
     setEditQ(item.question);
-    setEditA(item.answer);
+    setEditA(item.answer ?? "");
   };
 
   const saveEdit = async () => {
@@ -166,22 +144,9 @@ function QnaPage() {
       body: JSON.stringify({ question: editQ, answer: editA }),
     });
     setSaving(false);
-    setItems((prev) =>
-      prev.map((item) =>
-        item.id === editingId ? { ...item, question: editQ, answer: editA } : item,
-      ),
-    );
     setEditingId(null);
+    await fetchItems();
   };
-
-  const exportUrl = () =>
-    tab === "unanswered" ? "/api/unanswered/export" : "/api/qna/export";
-
-  const currentCount = tab === "unanswered" ? unanswered.length : items.length;
-  const isLoading = tab === "unanswered" ? loadingUnanswered : loading;
-
-
-
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -193,39 +158,29 @@ function QnaPage() {
             <p className="mt-1 text-sm text-slate-500">Модерация и публикация вопросов QnA</p>
           </div>
           <div className="text-sm text-slate-500">
-            Всего записей:{" "}
-            <span className="font-medium text-slate-900">{currentCount}</span>
+            Записей:{" "}
+            <span className="font-medium text-slate-900">{items.length}</span>
           </div>
         </header>
 
-        {/* Tabs */}
-        <div className="mb-5 border-b border-slate-200">
-          <nav className="flex gap-1 -mb-px" role="tablist">
-            {([
-              { key: "main", label: "Основная", count: items.length },
-              { key: "unanswered", label: "Неотвеченные вопросы", count: unanswered.length },
-            ] as const).map((t) => {
-              const isActive = tab === t.key;
+        {/* Status filter */}
+        <div className="mb-5">
+          <nav className="inline-flex gap-1 p-1 bg-slate-100 rounded-lg" role="tablist">
+            {FILTERS.map((f) => {
+              const isActive = filter === f.key;
               return (
                 <button
-                  key={t.key}
+                  key={f.key}
                   role="tab"
                   aria-selected={isActive}
-                  onClick={() => setTab(t.key)}
-                  className={`inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                  onClick={() => setFilter(f.key)}
+                  className={`px-3.5 py-1.5 text-sm font-medium rounded-md transition-colors ${
                     isActive
-                      ? "border-blue-600 text-blue-600"
-                      : "border-transparent text-slate-500 hover:text-slate-900 hover:border-slate-300"
+                      ? "bg-white text-slate-900 shadow-sm"
+                      : "text-slate-500 hover:text-slate-900"
                   }`}
                 >
-                  {t.label}
-                  <span
-                    className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-[11px] font-semibold ${
-                      isActive ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-600"
-                    }`}
-                  >
-                    {t.count}
-                  </span>
+                  {f.label}
                 </button>
               );
             })}
@@ -233,42 +188,37 @@ function QnaPage() {
         </div>
 
         {/* Action bar */}
-
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div className="flex flex-wrap gap-2">
-            {tab === "main" && (
-              <>
-                <label
-                  htmlFor={excelInputId}
-                  className={`inline-flex items-center gap-2 px-3.5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm ${
-                    uploading ? "pointer-events-none opacity-60" : "cursor-pointer"
-                  }`}
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5-5 5 5M12 5v12" />
-                  </svg>
-                  {uploading ? "Загрузка..." : "Загрузить Excel"}
-                </label>
-                <input id={excelInputId} type="file" accept=".xlsx" onChange={handleUpload} className="sr-only" />
+            <label
+              htmlFor={excelInputId}
+              className={`inline-flex items-center gap-2 px-3.5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm ${
+                uploading ? "pointer-events-none opacity-60" : "cursor-pointer"
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5-5 5 5M12 5v12" />
+              </svg>
+              {uploading ? "Загрузка..." : "Загрузить Excel"}
+            </label>
+            <input id={excelInputId} type="file" accept=".xlsx" onChange={handleUpload} className="sr-only" />
 
-                <label
-                  htmlFor={docInputId}
-                  className={`inline-flex items-center gap-2 px-3.5 py-2 bg-white text-slate-700 text-sm font-medium rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors ${
-                    uploading ? "pointer-events-none opacity-60" : "cursor-pointer"
-                  }`}
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h7l5 5v11a2 2 0 01-2 2z" />
-                  </svg>
-                  {uploading ? "Загрузка..." : "Загрузить документ"}
-                </label>
-                <input id={docInputId} type="file" accept=".pdf,.docx" onChange={handleUpload} className="sr-only" />
-              </>
-            )}
+            <label
+              htmlFor={docInputId}
+              className={`inline-flex items-center gap-2 px-3.5 py-2 bg-white text-slate-700 text-sm font-medium rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors ${
+                uploading ? "pointer-events-none opacity-60" : "cursor-pointer"
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h7l5 5v11a2 2 0 01-2 2z" />
+              </svg>
+              {uploading ? "Загрузка..." : "Загрузить документ"}
+            </label>
+            <input id={docInputId} type="file" accept=".pdf,.docx" onChange={handleUpload} className="sr-only" />
           </div>
 
           <a
-            href={exportUrl()}
+            href="/api/qna/export"
             className="inline-flex items-center gap-2 px-3.5 py-2 bg-white text-slate-700 text-sm font-medium rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -281,206 +231,152 @@ function QnaPage() {
         {/* Table */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="overflow-x-auto">
-            {tab === "main" ? (
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50/70 border-b border-slate-200">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50/70 border-b border-slate-200">
+                <tr>
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider w-10">#</th>
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Вопрос</th>
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Ответ</th>
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider w-32">Источник</th>
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider w-28">Статус</th>
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider w-24">Дата</th>
+                  <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider w-64">Действия</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {loading ? (
                   <tr>
-                    <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider w-10">#</th>
-                    <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Вопрос</th>
-                    <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Ответ</th>
-                    <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider w-32">Источник</th>
-                    <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider w-28">Статус</th>
-                    <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider w-24">Дата</th>
-                    <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider w-64">Действия</th>
+                    <td colSpan={7} className="px-4 py-20 text-center text-slate-400">
+                      <div className="flex justify-center items-center gap-2">
+                        <svg className="animate-spin h-5 w-5 text-blue-600" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                        </svg>
+                        <span className="text-sm">Загрузка...</span>
+                      </div>
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {isLoading ? (
-                    <tr>
-                      <td colSpan={7} className="px-4 py-20 text-center text-slate-400">
-                        <div className="flex justify-center items-center gap-2">
-                          <svg className="animate-spin h-5 w-5 text-blue-600" viewBox="0 0 24 24" fill="none">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                          </svg>
-                          <span className="text-sm">Загрузка...</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : items.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="px-4 py-20 text-center">
-                        <div className="flex flex-col items-center gap-3 text-slate-400">
-                          <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h7l5 5v11a2 2 0 01-2 2z" />
-                          </svg>
-                          <div>
-                            <div className="text-sm font-medium text-slate-700">Нет записей</div>
-                            <div className="text-xs text-slate-500 mt-0.5">Загрузите Excel или документ, чтобы начать</div>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    items.map((item, idx) => {
-                      const isEditing = editingId === item.id;
-                      return (
-                        <tr
-                          key={item.id}
-                          className={`align-top transition-colors ${
-                            isEditing ? "bg-blue-50/40" : "hover:bg-slate-50"
-                          }`}
-                        >
-                          <td className="px-4 py-4 text-slate-400 text-xs">{idx + 1}</td>
-                          <td className="px-4 py-4 text-slate-900 max-w-xs">
-                            {isEditing ? (
-                              <textarea
-                                value={editQ}
-                                onChange={(e) => setEditQ(e.target.value)}
-                                rows={3}
-                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                              />
-                            ) : (
-                              <p className="line-clamp-2 leading-relaxed" title={item.question}>
-                                {item.question}
-                              </p>
-                            )}
-                          </td>
-                          <td className="px-4 py-4 text-slate-700 max-w-md">
-                            {isEditing ? (
-                              <textarea
-                                value={editA}
-                                onChange={(e) => setEditA(e.target.value)}
-                                rows={3}
-                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                              />
-                            ) : (
-                              <p className="line-clamp-2 leading-relaxed" title={item.answer}>
-                                {item.answer}
-                              </p>
-                            )}
-                          </td>
-                          <td className="px-4 py-4 text-xs text-slate-500 truncate max-w-[8rem]" title={item.sourceDocument}>
-                            {item.sourceDocument}
-                          </td>
-                          <td className="px-4 py-4">
-                            <span
-                              className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium ring-1 ring-inset ${STATUS_CLASS[item.status]}`}
-                            >
-                              <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[item.status]}`} />
-                              {STATUS_LABEL[item.status]}
-                            </span>
-                          </td>
-                          <td className="px-4 py-4 text-xs text-slate-500 whitespace-nowrap">
-                            {new Date(item.createdAt).toLocaleDateString("ru-RU")}
-                          </td>
-                          <td className="px-4 py-4">
-                            <div className="flex items-center justify-end gap-1.5">
-                              {isEditing ? (
-                                <>
-                                  <button
-                                    onClick={saveEdit}
-                                    disabled={saving}
-                                    className="px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-60"
-                                  >
-                                    {saving ? "Сохранение..." : "Сохранить"}
-                                  </button>
-                                  <button
-                                    onClick={() => setEditingId(null)}
-                                    className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-md transition-colors"
-                                  >
-                                    Отмена
-                                  </button>
-                                </>
-                              ) : (
-                                <>
-                                  {item.status === "pending" && (
-                                    <button
-                                      onClick={() => publish(item.id)}
-                                      className="px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                                    >
-                                      Опубликовать
-                                    </button>
-                                  )}
-                                  <button
-                                    onClick={() => startEdit(item)}
-                                    className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-md transition-colors"
-                                  >
-                                    Изменить
-                                  </button>
-                                  <button
-                                    onClick={() => remove(item.id)}
-                                    className="px-3 py-1.5 text-xs font-medium text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
-                                  >
-                                    Удалить
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            ) : (
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50/70 border-b border-slate-200">
+                ) : items.length === 0 ? (
                   <tr>
-                    <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider w-10">#</th>
-                    <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider w-40">Пользователь</th>
-                    <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Вопрос</th>
-                    <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider w-40">Дата и время</th>
+                    <td colSpan={7} className="px-4 py-20 text-center">
+                      <div className="flex flex-col items-center gap-3 text-slate-400">
+                        <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h7l5 5v11a2 2 0 01-2 2z" />
+                        </svg>
+                        <div>
+                          <div className="text-sm font-medium text-slate-700">Нет записей</div>
+                          <div className="text-xs text-slate-500 mt-0.5">Загрузите Excel или документ, чтобы начать</div>
+                        </div>
+                      </div>
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {isLoading ? (
-                    <tr>
-                      <td colSpan={4} className="px-4 py-20 text-center text-slate-400">
-                        <div className="flex justify-center items-center gap-2">
-                          <svg className="animate-spin h-5 w-5 text-blue-600" viewBox="0 0 24 24" fill="none">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                          </svg>
-                          <span className="text-sm">Загрузка...</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : unanswered.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="px-4 py-20 text-center">
-                        <div className="flex flex-col items-center gap-3 text-slate-400">
-                          <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                          </svg>
-                          <div className="text-sm font-medium text-slate-700">Неотвеченных вопросов нет</div>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    unanswered.map((q, idx) => (
-                      <tr key={q.id} className="align-top hover:bg-slate-50 transition-colors">
+                ) : (
+                  items.map((item, idx) => {
+                    const isEditing = editingId === item.id;
+                    return (
+                      <tr
+                        key={item.id}
+                        className={`align-top transition-colors ${
+                          isEditing ? "bg-blue-50/40" : "hover:bg-slate-50"
+                        }`}
+                      >
                         <td className="px-4 py-4 text-slate-400 text-xs">{idx + 1}</td>
-                        <td className="px-4 py-4 text-slate-700 text-xs font-mono">{q.userId}</td>
-                        <td className="px-4 py-4 text-slate-900">
-                          <p className="leading-relaxed">{q.questionText}</p>
+                        <td className="px-4 py-4 text-slate-900 max-w-xs">
+                          {isEditing ? (
+                            <textarea
+                              value={editQ}
+                              onChange={(e) => setEditQ(e.target.value)}
+                              rows={3}
+                              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                            />
+                          ) : (
+                            <p className="line-clamp-2 leading-relaxed" title={item.question}>
+                              {item.question}
+                            </p>
+                          )}
                         </td>
-                        <td className="px-4 py-4 text-xs text-slate-500 whitespace-nowrap text-right">
-                          {new Date(q.timestamp).toLocaleString("ru-RU", {
-                            day: "2-digit",
-                            month: "2-digit",
-                            year: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
+                        <td className="px-4 py-4 text-slate-700 max-w-md">
+                          {isEditing ? (
+                            <textarea
+                              value={editA}
+                              onChange={(e) => setEditA(e.target.value)}
+                              rows={3}
+                              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                            />
+                          ) : item.answer ? (
+                            <p className="line-clamp-2 leading-relaxed" title={item.answer}>
+                              {item.answer}
+                            </p>
+                          ) : (
+                            <span className="text-slate-300">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-4 text-xs text-slate-500 truncate max-w-[8rem]" title={item.sourceDocument ?? ""}>
+                          {item.sourceDocument || <span className="text-slate-300">—</span>}
+                        </td>
+                        <td className="px-4 py-4">
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium ring-1 ring-inset ${STATUS_CLASS[item.status]}`}
+                          >
+                            <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[item.status]}`} />
+                            {STATUS_LABEL[item.status]}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 text-xs text-slate-500 whitespace-nowrap">
+                          {new Date(item.createdAt).toLocaleDateString("ru-RU")}
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {isEditing ? (
+                              <>
+                                <button
+                                  onClick={saveEdit}
+                                  disabled={saving}
+                                  className="px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-60"
+                                >
+                                  {saving ? "Сохранение..." : "Сохранить"}
+                                </button>
+                                <button
+                                  onClick={() => setEditingId(null)}
+                                  className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-md transition-colors"
+                                >
+                                  Отмена
+                                </button>
+                              </>
+                            ) : item.status === "deleted" ? (
+                              <span className="text-xs text-slate-400">В корзине</span>
+                            ) : (
+                              <>
+                                {item.status === "unanswered" && (
+                                  <button
+                                    onClick={() => publish(item.id)}
+                                    className="px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                                  >
+                                    Опубликовать
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => startEdit(item)}
+                                  className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-md transition-colors"
+                                >
+                                  Изменить
+                                </button>
+                                <button
+                                  onClick={() => remove(item.id)}
+                                  className="px-3 py-1.5 text-xs font-medium text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
+                                >
+                                  Удалить
+                                </button>
+                              </>
+                            )}
+                          </div>
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            )}
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>

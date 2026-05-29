@@ -46,7 +46,7 @@ export async function embedText(text: string): Promise<number[]> {
 export async function upsertQnaItem(item: {
   id: number;
   question: string;
-  answer: string;
+  answer: string | null;
 }): Promise<void> {
   const vector = await embedText(item.question);
   await qdrant.upsert(COLLECTION, {
@@ -54,7 +54,11 @@ export async function upsertQnaItem(item: {
       {
         id: item.id,
         vector,
-        payload: { id: item.id, question: item.question, answer: item.answer },
+        payload: {
+          id: item.id,
+          question: item.question,
+          answer: item.answer ?? "",
+        },
       },
     ],
   });

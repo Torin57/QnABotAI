@@ -20,7 +20,7 @@ export async function parseExcelQA(buffer: Buffer): Promise<QAPair[]> {
 }
 
 export async function exportQnaToExcel(
-  items: { question: string; answer: string; sourceDocument: string; createdAt: Date }[]
+  items: { question: string; answer: string | null; sourceDocument: string | null; createdAt: Date }[]
 ): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("QnA");
@@ -30,24 +30,6 @@ export async function exportQnaToExcel(
     { header: "answer", key: "answer", width: 70 },
     { header: "source", key: "sourceDocument", width: 30 },
     { header: "created_at", key: "createdAt", width: 20 },
-  ];
-
-  sheet.addRows(items);
-
-  const buffer = await workbook.xlsx.writeBuffer();
-  return Buffer.from(buffer);
-}
-
-export async function exportUnansweredToExcel(
-  items: { userId: string; questionText: string; timestamp: Date }[]
-): Promise<Buffer> {
-  const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet("Unanswered");
-
-  sheet.columns = [
-    { header: "user_id", key: "userId", width: 20 },
-    { header: "question", key: "questionText", width: 70 },
-    { header: "timestamp", key: "timestamp", width: 20 },
   ];
 
   sheet.addRows(items);
