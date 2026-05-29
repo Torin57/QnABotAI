@@ -72,3 +72,68 @@ UI и логи (видимые тексты в коде):
 - [x] Шаг 4: перенос Next.js папок — `src/app/api/faq/` → `src/app/api/qna/`, `src/app/admin/faq/` → `src/app/admin/qna/`
 - [x] Шаг 5: верификация запуска — `npm run dev:server` под Node 24: `[bot] ensuring Qdrant collection... / creating bot instance... / starting polling... / started`, `[server] ready on http://localhost:3000`
 - [x] Бонус: документация подровнена — `Docs/spec.md` и `README.md` ссылаются на `qna_items`/`/admin/qna`
+
+---
+
+# План: единая таблица QnA + анонимность (unified lifecycle)
+
+## Контекст и решение
+
+Сейчас неотвеченные вопросы лежат в отдельной таблице `unanswered_queries`, а FAQ — в `qna_items`. В админке это две вкладки. По факту это **одна сущность** в разных состояниях жизненного цикла.
+
+Решение (согласовано с заказчиком): **не объединять, а упростить** — удалить таблицу `unanswered_queries` целиком (в ней 1 запись, история не важна) и вести всё в `qna_items`. Бот пишет неотвеченный вопрос напрямую в `qna_items`. Telegram `userId` больше не сохраняем — **бот анонимный (must have)**.
+
+Целевой lifecycle одной записи: `unanswered → active → deleted`. Статус `pending` **выпиливаем в этом же заходе** (из схемы, бэйджей, фильтров и кнопки «Опубликовать»).
+
+## Целевая модель
+
+- `qna_items.status`: `unanswered | active | deleted` (статус `pending` удалён).
+- Неотвеченный вопрос = строка с `status = "unanswered"`, `answer` пустой, `sourceDocument` пустой/нейтральный.
+- Таблицы `unanswered_queries` нет. `userId` нигде не хранится и не отображается.
+- `/admin/qna` — один список + фильтр по статусу (All / Unanswered / Active / Deleted), без вкладок.
+
+## Шаги
+
+### 1. Схема БД (`src/db/schema.ts` + миграции)
+- `status` enum: добавить `"unanswered"`, удалить `"pending"`. Итог: `unanswered | active | deleted`.
+- `answer`: разрешить пустое/NULL (сейчас `NOT NULL`).
+- `sourceDocument`: разрешить пустое/NULL или дефолт (сейчас `NOT NULL`).
+- Удалить таблицу `unanswered_queries`.
+- Перегенерировать миграции (или пересоздать `logs.db`, как и при rename).
+
+### 2. Бот (`src/bot/index.ts`)
+- `logUnanswered(...)` пишет в `qna_items` (`status="unanswered"`, `answer=""`, без `userId`), а не в `unanswered_queries`.
+
+### 3. API
+- Удалить `src/app/api/unanswered/route.ts` и `src/app/api/unanswered/export/route.ts`.
+- `GET /api/qna`: параметризовать фильтр по статусу (сейчас хардкод `status != deleted`) — поддержать All/Unanswered/Active/Deleted.
+- Проверить `upload`/`export`/`publish` на консистентность статусов.
+
+### 4. UI (`src/app/admin/qna/page.tsx`)
+- Убрать вкладки (`tab` state, `<nav role=tablist>`), оставить один список.
+- Над списком — фильтр по статусу.
+- Колонка «Пользователь» (`userId`) удаляется (анонимность).
+- Пересмотреть состав колонок единого списка (вопрос/ответ/статус/источник/дата/действия), чтобы неотвеченные органично жили в общей таблице.
+
+### 5. Excel-экспорт (`src/lib/parser/excel.ts`)
+- Убрать колонку `user_id` из выгрузки неотвеченных (анонимность). Свести экспорт к единому формату qna.
+
+### 6. Документация
+- `Docs/spec.md`, `README.md`: описать единый список + lifecycle, убрать упоминания отдельной таблицы/вкладки/userId.
+
+## Связь с backlog
+- Это UI-половина задачи P2 «unified lifecycle `unanswered → active → deleted`». Делать совместно, чтобы не плодить временные решения.
+- Анонимность («убрать колонку Пользователь») может уйти как часть этого же изменения — отдельный быстрый PR больше не нужен, т.к. таблица всё равно удаляется.
+
+## Открытые вопросы / следствия
+- Расхождение spec vs код: upload сейчас создаёт `active`, а не `pending` (`src/lib/parser/index.ts:38`). После удаления `pending` это становится корректным поведением (upload → сразу `active`); кнопка «Опубликовать» удаляется.
+- Восстановление из корзины (`deleted` → `active` + reindex) — отдельная поздняя задача в P2, не входит в текущий заход. Но фильтр Deleted, который мы добавляем сейчас, — предпосылка для неё.
+
+## Прогресс
+- [x] Согласована модель: удаляем `unanswered_queries`, всё в `qna_items`, бот анонимный
+- [ ] Шаг 1: схема + миграции
+- [ ] Шаг 2: бот пишет в `qna_items`
+- [ ] Шаг 3: API (удаление unanswered, фильтр по статусу)
+- [ ] Шаг 4: UI единый список + фильтр, убрать колонку Пользователь
+- [ ] Шаг 5: Excel-экспорт без user_id
+- [ ] Шаг 6: документация
