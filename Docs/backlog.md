@@ -6,8 +6,8 @@
 * [ ] Довести redesign до консистентного состояния
   * [x] Объединить FAQ и неотвеченные вопросы в один canonical route `/admin/qna` (вкладки)
   * [x] Cleanup legacy: удалена `/admin/unanswered` page+route, упоминания в `spec.md`/`README.md` подровнены (API `/api/unanswered` оставлен — используется вкладкой)
-  * [ ] Упростить UX QnA: заменить вкладки «Основная» / «Неотвеченные вопросы» на единый список с фильтрацией по статусу (All / Unanswered / Active / Deleted). FAQ и неотвеченные — одна сущность QnA item в разных состояниях lifecycle, а не разные разделы. Сейчас это две независимые таблицы (`qna_items` vs `unanswered_queries`), поэтому unified-список тесно связан с задачей unified lifecycle ниже в P2 (`unanswered → active → deleted`)
-  * [ ] **(must have, анонимность)** Убрать колонку «Пользователь» (Telegram user id вопрошающего) со вкладки/списка неотвеченных. Бот должен быть анонимным. Затрагивает: UI `src/app/admin/qna/page.tsx`, Excel-экспорт `src/lib/parser/excel.ts` + `src/app/api/unanswered/export/route.ts`; опционально — перестать писать `userId` в БД (`src/bot/index.ts`, `src/db/schema.ts`). Заодно пересмотреть странный состав колонок на вкладке неотвеченных
+  * [x] Упростить UX QnA: вкладки «Основная» / «Неотвеченные вопросы» заменены на единый список с фильтром по статусу (Все / Неотвеченные / Активные / Удалённые). Таблица `unanswered_queries` удалена — всё живёт в `qna_items` (lifecycle `unanswered → active → deleted`)
+  * [x] **(анонимность)** Колонка «Пользователь» (Telegram user id) убрана из UI и экспорта; бот больше не сохраняет `userId` (см. `Docs/plan.md`)
 * [ ] Добавить bulk actions (checkbox + select all + delete)
 
 ---
@@ -59,9 +59,9 @@
 
 ### Упрощение domain model
 
-* [ ] Зафиксировать unified lifecycle: `unanswered → active → deleted` (без `pending`) — **выполняется сейчас в рамках P1 redesign** (см. `Docs/plan.md`)
-* [ ] Удалить статус `pending` из схемы `qna_items` и из UI (фильтры, бэйджи, action-кнопки «Опубликовать») — **выполняется сейчас в рамках P1 redesign**
-* [ ] Обновить `Docs/spec.md` под новый lifecycle
+* [x] Зафиксировать unified lifecycle: `unanswered → active → deleted` (без `pending`) — сделано в рамках P1 redesign (см. `Docs/plan.md`)
+* [x] Удалить статус `pending` из схемы `qna_items` и из UI (фильтры, бэйджи) — сделано; кнопка «Опубликовать» теперь переводит `unanswered → active`
+* [x] Обновить `Docs/spec.md` под новый lifecycle — раздел админки, схема БД и логирование обновлены
 
 ### Категории / разделы FAQ
 

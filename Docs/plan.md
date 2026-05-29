@@ -131,9 +131,10 @@ UI и логи (видимые тексты в коде):
 
 ## Прогресс
 - [x] Согласована модель: удаляем `unanswered_queries`, всё в `qna_items`, бот анонимный
-- [ ] Шаг 1: схема + миграции
-- [ ] Шаг 2: бот пишет в `qna_items`
-- [ ] Шаг 3: API (удаление unanswered, фильтр по статусу)
-- [ ] Шаг 4: UI единый список + фильтр, убрать колонку Пользователь
-- [ ] Шаг 5: Excel-экспорт без user_id
-- [ ] Шаг 6: документация
+- [x] Шаг 1: схема + миграции — `qna_items` (status `unanswered|active|deleted`, default `unanswered`, `answer`/`source_document` nullable), таблица `unanswered_queries` удалена, миграции пересозданы (`0000_medical_morlocks.sql`), `logs.db` пересоздаётся при старте
+- [x] Шаг 2: бот пишет неотвеченный вопрос в `qna_items` (`status="unanswered"`, без `userId`)
+- [x] Шаг 3: API — удалены `/api/unanswered/*`, в `GET /api/qna` добавлен фильтр `?status=all|unanswered|active|deleted`
+- [x] Шаг 4: UI — единый список с фильтром по статусу, вкладки убраны, колонка «Пользователь» удалена
+- [x] Шаг 5: Excel — удалён `exportUnansweredToExcel` (с `user_id`), остался единый `exportQnaToExcel`
+- [x] Шаг 6: документация — `Docs/spec.md` и `README.md` обновлены под единый список и анонимность
+- [x] Проверка: `tsc --noEmit` и линтер — без ошибок
