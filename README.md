@@ -48,7 +48,7 @@
 
 | Компонент | Минимум |
 |-----------|---------|
-| **Node.js** | **20 LTS** или новее (рекомендуется актуальный LTS под Next.js 16) |
+| **Node.js** | **24.x** (`.nvmrc`, `package.json`) |
 | **npm** | поставляется с Node.js |
 | **Docker** | Docker Engine + **Docker Compose** v2 (или Docker Desktop с Compose) — для Qdrant |
 
@@ -227,6 +227,15 @@ npm -v && which npm
 ```
 
 Собирайте и запускайте проект в одной и той же версии Node.
+
+Для этого проекта целевая версия зафиксирована как Node 24 (`.nvmrc`, `package.json`). Если `dev:server` падает с `NODE_MODULE_VERSION 115` vs `137`, пересоберите нативный модуль именно под системным Node 24:
+
+```bash
+env PATH=/usr/bin:/bin npm rebuild better-sqlite3
+env PATH=/usr/bin:/bin node -e "const Database=require('better-sqlite3'); new Database(':memory:'); console.log('sqlite OK')"
+```
+
+Важно: простая проверка `require('better-sqlite3')` может быть ложноположительной. Нативный бинарник реально грузится при создании `new Database(...)`.
 
 ---
 
