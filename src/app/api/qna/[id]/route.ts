@@ -12,7 +12,7 @@ export async function PATCH(request: NextRequest, { params }: Context) {
   const { question, answer } = await request.json();
 
   const [item] = await db.select().from(qnaItems).where(eq(qnaItems.id, id));
-  if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!item) return NextResponse.json({ error: "Запись не найдена" }, { status: 404 });
 
   await db.update(qnaItems).set({ question, answer }).where(eq(qnaItems.id, id));
 
@@ -28,7 +28,7 @@ export async function DELETE(_request: NextRequest, { params }: Context) {
   const id = parseInt(idStr, 10);
 
   const [item] = await db.select().from(qnaItems).where(eq(qnaItems.id, id));
-  if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!item) return NextResponse.json({ error: "Запись не найдена" }, { status: 404 });
 
   await db.update(qnaItems).set({ status: "deleted" }).where(eq(qnaItems.id, id));
 

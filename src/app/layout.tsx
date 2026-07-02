@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "QnA Bot Admin",
-  description: "Admin panel for the QnA Bot",
+  title: "Бот «Вопрос–Ответ» — админка",
+  description: "Панель администратора бота «Вопрос–Ответ»",
 };
 
 export default function RootLayout({

@@ -11,7 +11,7 @@ export async function POST(_request: NextRequest, { params }: Context) {
   const id = parseInt(idStr, 10);
 
   const [item] = await db.select().from(qnaItems).where(eq(qnaItems.id, id));
-  if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!item) return NextResponse.json({ error: "Запись не найдена" }, { status: 404 });
 
   await db.update(qnaItems).set({ status: "active" }).where(eq(qnaItems.id, id));
   await upsertQnaItem({ id, question: item.question, answer: item.answer });

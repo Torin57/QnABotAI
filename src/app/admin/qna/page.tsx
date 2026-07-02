@@ -155,7 +155,7 @@ function QnaPage() {
         <header className="flex flex-wrap items-end justify-between gap-4 mb-8">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-slate-900">База знаний</h1>
-            <p className="mt-1 text-sm text-slate-500">Модерация и публикация вопросов QnA</p>
+            <p className="mt-1 text-sm text-slate-500">Управление базой вопросов и ответов</p>
           </div>
           <div className="text-sm text-slate-500">
             Записей:{" "}
