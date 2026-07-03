@@ -13,15 +13,18 @@ export async function POST(_request: NextRequest, { params }: Context) {
   const [item] = await db.select().from(qnaItems).where(eq(qnaItems.id, id));
   if (!item) return NextResponse.json({ error: "Запись не найдена" }, { status: 404 });
 
-  if (!item.answer || !item.answer.trim()) {
-    return NextResponse.json(
-      { error: "Нельзя опубликовать запись без ответа" },
-      { status: 400 }
-    );
+  if (item.status !== "deleted") {
+    return NextResponse.json({ error: "Запись не находится в корзине" }, { status: 400 });
   }
 
-  await db.update(qnaItems).set({ status: "active" }).where(eq(qnaItems.id, id));
-  await upsertQnaItem({ id, question: item.question, answer: item.answer });
+  const hasAnswer = Boolean(item.answer && item.answer.trim());
+  const restoredStatus = hasAnswer ? "active" : "unanswered";
 
-  return NextResponse.json({ ok: true });
+  await db.update(qnaItems).set({ status: restoredStatus }).where(eq(qnaItems.id, id));
+
+  if (hasAnswer) {
+    await upsertQnaItem({ id, question: item.question, answer: item.answer });
+  }
+
+  return NextResponse.json({ ok: true, status: restoredStatus });
 }

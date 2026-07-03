@@ -8,6 +8,13 @@
       "when": 1780050883254,
       "tag": "0000_medical_morlocks",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1783024976878,
+      "tag": "0001_fresh_yellowjacket",
+      "breakpoints": true
     }
   ]
 }

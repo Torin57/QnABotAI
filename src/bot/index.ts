@@ -1,7 +1,7 @@
 import { Bot, InlineKeyboard } from "grammy";
 import { db } from "@/db";
-import { qnaItems } from "@/db/schema";
-import { ensureCollection, searchQna } from "@/lib/qdrant";
+import { qnaItems, botLog } from "@/db/schema";
+import { ensureCollection, searchQna, SearchResult } from "@/lib/qdrant";
 import { mistral } from "@/lib/mistral";
 
 const JUDGE_PROMPT = `Ты — ассистент выбора ответа из базы знаний.
@@ -84,6 +84,7 @@ export function createBot() {
         console.log("[bot] no candidates found");
 
         await logUnanswered(userQuestion);
+        await logBotEvent(userQuestion, candidates, "null", null);
 
         await ctx.reply(
           "Не нашёл ответа на ваш вопрос.",
@@ -103,6 +104,7 @@ export function createBot() {
         console.log("[bot] judge returned NULL");
 
         await logUnanswered(userQuestion);
+        await logBotEvent(userQuestion, candidates, "null", null);
 
         await ctx.reply(
           "Не нашёл подходящего ответа в базе знаний.",
@@ -120,6 +122,7 @@ export function createBot() {
         console.log("[bot] chosen candidate not found in candidates");
 
         await logUnanswered(userQuestion);
+        await logBotEvent(userQuestion, candidates, "null", null);
 
         await ctx.reply(
           "Не нашёл ответа.",
@@ -132,6 +135,7 @@ export function createBot() {
       console.log("[bot] sending answer:", chosen.answer);
 
       await ctx.reply(chosen.answer);
+      await logBotEvent(userQuestion, candidates, "answered", chosen.answer);
 
       console.log("[bot] answer sent successfully");
     } catch (err) {
@@ -150,6 +154,20 @@ async function logUnanswered(questionText: string) {
   await db.insert(qnaItems).values({
     question: questionText,
     status: "unanswered",
+  });
+}
+
+async function logBotEvent(
+  questionText: string,
+  candidates: SearchResult[],
+  verdict: "answered" | "null",
+  answer: string | null
+) {
+  await db.insert(botLog).values({
+    question: questionText,
+    candidates: candidates.map((c) => ({ id: c.id, question: c.question, score: c.score })),
+    verdict,
+    answer,
   });
 }
 

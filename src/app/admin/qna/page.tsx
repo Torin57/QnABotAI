@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useId, useRef } from "react";
+import { useState, useEffect, useCallback, useId, useRef, useMemo } from "react";
+import { useToast } from "@/components/Toast";
 
 type Status = "unanswered" | "active" | "deleted";
 
@@ -14,7 +15,7 @@ interface QnaItem {
 }
 
 const STATUS_LABEL: Record<Status, string> = {
-  unanswered: "Неотвечен",
+  unanswered: "Не отвечен",
   active: "Активен",
   deleted: "Удалён",
 };
@@ -32,6 +33,8 @@ const STATUS_DOT: Record<Status, string> = {
 };
 
 type Filter = "all" | "unanswered" | "active" | "deleted";
+type SortKey = "question" | "answer" | "createdAt";
+type SortDirection = "asc" | "desc";
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: "all", label: "Все" },
@@ -40,15 +43,67 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: "deleted", label: "Удалённые" },
 ];
 
+function SortableHeader({
+  label,
+  sortKey,
+  activeKey,
+  direction,
+  onSort,
+  className = "",
+}: {
+  label: string;
+  sortKey: SortKey;
+  activeKey: SortKey;
+  direction: SortDirection;
+  onSort: (key: SortKey) => void;
+  className?: string;
+}) {
+  const isActive = activeKey === sortKey;
+  return (
+    <th className={`px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider ${className}`}>
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className={`inline-flex items-center gap-1 hover:text-slate-900 transition-colors cursor-pointer ${
+          isActive ? "text-slate-900" : "text-slate-500"
+        }`}
+      >
+        {label}
+        <svg
+          className={`w-3 h-3 transition-transform ${isActive ? "opacity-100" : "opacity-30"} ${
+            isActive && direction === "desc" ? "rotate-180" : ""
+          }`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth="2.5"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+        </svg>
+      </button>
+    </th>
+  );
+}
+
 function QnaPage() {
+  const toast = useToast();
   const [items, setItems] = useState<QnaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [uploadingFileName, setUploadingFileName] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editQ, setEditQ] = useState("");
   const [editA, setEditA] = useState("");
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
+  const [adding, setAdding] = useState(false);
+  const [newQ, setNewQ] = useState("");
+  const [newA, setNewA] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>("createdAt");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const excelInputId = useId();
   const docInputId = useId();
 
@@ -69,6 +124,7 @@ function QnaPage() {
       const raw = await res.json();
       const data: QnaItem[] = Array.isArray(raw) ? raw : [];
       setItems(data);
+      setSelectedIds(new Set());
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === "AbortError") return;
       console.error("[QnA] fetchItems ERROR", err);
@@ -85,10 +141,32 @@ function QnaPage() {
     };
   }, [fetchItems]);
 
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDirection("asc");
+    }
+  };
+
+  const sortedItems = useMemo(() => {
+    const dir = sortDirection === "asc" ? 1 : -1;
+    return [...items].sort((a, b) => {
+      if (sortKey === "createdAt") {
+        return (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) * dir;
+      }
+      const aVal = (sortKey === "question" ? a.question : a.answer) ?? "";
+      const bVal = (sortKey === "question" ? b.question : b.answer) ?? "";
+      return aVal.localeCompare(bVal, "ru") * dir;
+    });
+  }, [items, sortKey, sortDirection]);
+
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
+    setUploadingFileName(file.name);
     try {
       const body = new FormData();
       body.append("file", file);
@@ -105,28 +183,153 @@ function QnaPage() {
         : { error: "Пустой ответ сервера" };
       e.target.value = "";
       setUploading(false);
+      setUploadingFileName(null);
       if (res.ok) {
         await fetchItems();
-        alert(`Загружено ${data.imported} пар вопрос-ответ`);
+        toast.success(`Загружено ${data.imported} пар вопрос-ответ`);
       } else {
-        alert(`Ошибка: ${data.error}`);
+        toast.error(`Ошибка: ${data.error}`);
       }
     } catch (err) {
       console.error("[QnA] Upload ERROR", err);
       setUploading(false);
-      alert("Ошибка при загрузке файла");
+      setUploadingFileName(null);
+      toast.error("Ошибка при загрузке файла");
+    }
+  };
+
+  const openAdd = () => {
+    setNewQ("");
+    setNewA("");
+    setAdding(true);
+  };
+
+  const createItem = async () => {
+    const question = newQ.trim();
+    const answer = newA.trim();
+    if (!question || !answer) {
+      toast.error("Заполните вопрос и ответ");
+      return;
+    }
+    setCreating(true);
+    try {
+      const res = await fetch("/api/qna", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question, answer }),
+      });
+      if (res.ok) {
+        setAdding(false);
+        await fetchItems();
+        toast.success("Пара добавлена");
+      } else {
+        const data: { error?: string } = await res.json().catch(() => ({}));
+        toast.error(`Ошибка: ${data.error ?? "не удалось добавить запись"}`);
+      }
+    } catch (err) {
+      console.error("[QnA] createItem ERROR", err);
+      toast.error("Ошибка при добавлении записи");
+    } finally {
+      setCreating(false);
     }
   };
 
   const publish = async (id: number) => {
-    await fetch(`/api/qna/${id}/publish`, { method: "POST" });
-    await fetchItems();
+    try {
+      const res = await fetch(`/api/qna/${id}/publish`, { method: "POST" });
+      await fetchItems();
+      if (res.ok) {
+        toast.success("Запись опубликована");
+      } else {
+        const data: { error?: string } = await res.json().catch(() => ({}));
+        toast.error(`Ошибка: ${data.error ?? "не удалось опубликовать"}`);
+      }
+    } catch (err) {
+      console.error("[QnA] publish ERROR", err);
+      toast.error("Ошибка при публикации");
+    }
+  };
+
+  const restore = async (id: number) => {
+    try {
+      const res = await fetch(`/api/qna/${id}/restore`, { method: "POST" });
+      await fetchItems();
+      if (res.ok) {
+        toast.success("Запись восстановлена");
+      } else {
+        const data: { error?: string } = await res.json().catch(() => ({}));
+        toast.error(`Ошибка: ${data.error ?? "не удалось восстановить"}`);
+      }
+    } catch (err) {
+      console.error("[QnA] restore ERROR", err);
+      toast.error("Ошибка при восстановлении");
+    }
   };
 
   const remove = async (id: number) => {
     if (!confirm("Удалить эту запись?")) return;
-    await fetch(`/api/qna/${id}`, { method: "DELETE" });
-    await fetchItems();
+    try {
+      const res = await fetch(`/api/qna/${id}`, { method: "DELETE" });
+      await fetchItems();
+      if (res.ok) {
+        toast.success("Запись удалена");
+      } else {
+        const data: { error?: string } = await res.json().catch(() => ({}));
+        toast.error(`Ошибка: ${data.error ?? "не удалось удалить"}`);
+      }
+    } catch (err) {
+      console.error("[QnA] remove ERROR", err);
+      toast.error("Ошибка при удалении");
+    }
+  };
+
+  const selectableItems = items.filter((i) => i.status !== "deleted");
+  const allSelected =
+    selectableItems.length > 0 && selectableItems.every((i) => selectedIds.has(i.id));
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) => {
+      if (allSelected) return new Set();
+      return new Set(selectableItems.map((i) => i.id));
+    });
+  };
+
+  const bulkDelete = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    if (!confirm(`Удалить выбранные записи (${ids.length})?`)) return;
+    setBulkDeleting(true);
+    try {
+      const res = await fetch("/api/qna/bulk-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const data: { deleted?: number; error?: string } = await res.json().catch(() => ({}));
+      if (res.ok) {
+        await fetchItems();
+        toast.success(`Удалено записей: ${data.deleted ?? ids.length}`);
+      } else {
+        toast.error(`Ошибка: ${data.error ?? "не удалось удалить"}`);
+      }
+    } catch (err) {
+      console.error("[QnA] bulkDelete ERROR", err);
+      toast.error("Ошибка при массовом удалении");
+    } finally {
+      setBulkDeleting(false);
+    }
   };
 
   const startEdit = (item: QnaItem) => {
@@ -138,19 +341,31 @@ function QnaPage() {
   const saveEdit = async () => {
     if (!editingId) return;
     setSaving(true);
-    await fetch(`/api/qna/${editingId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question: editQ, answer: editA }),
-    });
-    setSaving(false);
-    setEditingId(null);
-    await fetchItems();
+    try {
+      const res = await fetch(`/api/qna/${editingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: editQ, answer: editA }),
+      });
+      setEditingId(null);
+      await fetchItems();
+      if (res.ok) {
+        toast.success("Изменения сохранены");
+      } else {
+        const data: { error?: string } = await res.json().catch(() => ({}));
+        toast.error(`Ошибка: ${data.error ?? "не удалось сохранить"}`);
+      }
+    } catch (err) {
+      console.error("[QnA] saveEdit ERROR", err);
+      toast.error("Ошибка при сохранении");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="max-w-7xl mx-auto px-6 py-10">
+      <div className="w-full px-6 py-10">
         {/* Header */}
         <header className="flex flex-wrap items-end justify-between gap-4 mb-8">
           <div>
@@ -190,6 +405,17 @@ function QnaPage() {
         {/* Action bar */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={openAdd}
+              className="inline-flex items-center gap-2 px-3.5 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors shadow-sm cursor-pointer"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+              Добавить пару
+            </button>
+
             <label
               htmlFor={excelInputId}
               className={`inline-flex items-center gap-2 px-3.5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm ${
@@ -228,18 +454,67 @@ function QnaPage() {
           </a>
         </div>
 
+        {/* Bulk actions bar */}
+        {selectedIds.size > 0 && (
+          <div className="flex items-center justify-between gap-3 mb-4 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <span className="text-sm text-blue-900">
+              Выбрано: <span className="font-medium">{selectedIds.size}</span>
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedIds(new Set())}
+                disabled={bulkDeleting}
+                className="px-3 py-1.5 text-xs font-medium text-blue-700 hover:text-blue-900 transition-colors disabled:opacity-60"
+              >
+                Снять выделение
+              </button>
+              <button
+                type="button"
+                onClick={bulkDelete}
+                disabled={bulkDeleting}
+                className="px-3.5 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-60"
+              >
+                {bulkDeleting ? "Удаление..." : "Удалить выбранное"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Processing banner */}
+        {uploading && (
+          <div className="flex items-center gap-2.5 mb-4 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+            <svg className="animate-spin h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+            </svg>
+            <span>
+              Обрабатывается: <span className="font-medium">{uploadingFileName}</span>…
+            </span>
+          </div>
+        )}
+
         {/* Table */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-slate-50/70 border-b border-slate-200">
                 <tr>
+                  <th className="px-4 py-3 text-left w-10">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={toggleSelectAll}
+                      disabled={selectableItems.length === 0}
+                      aria-label="Выбрать все"
+                      className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500/40 cursor-pointer disabled:cursor-not-allowed"
+                    />
+                  </th>
                   <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider w-10">#</th>
-                  <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Вопрос</th>
-                  <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Ответ</th>
-                  <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider w-32">Источник</th>
+                  <SortableHeader label="Вопрос" sortKey="question" activeKey={sortKey} direction={sortDirection} onSort={toggleSort} />
+                  <SortableHeader label="Ответ" sortKey="answer" activeKey={sortKey} direction={sortDirection} onSort={toggleSort} />
                   <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider w-28">Статус</th>
-                  <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider w-24">Дата</th>
+                  <SortableHeader label="Дата" sortKey="createdAt" activeKey={sortKey} direction={sortDirection} onSort={toggleSort} className="w-24" />
                   <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider w-64">Действия</th>
                 </tr>
               </thead>
@@ -271,7 +546,7 @@ function QnaPage() {
                     </td>
                   </tr>
                 ) : (
-                  items.map((item, idx) => {
+                  sortedItems.map((item, idx) => {
                     const isEditing = editingId === item.id;
                     return (
                       <tr
@@ -280,6 +555,17 @@ function QnaPage() {
                           isEditing ? "bg-blue-50/40" : "hover:bg-slate-50"
                         }`}
                       >
+                        <td className="px-4 py-4">
+                          {item.status !== "deleted" && (
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.has(item.id)}
+                              onChange={() => toggleSelect(item.id)}
+                              aria-label={`Выбрать запись ${item.id}`}
+                              className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500/40 cursor-pointer"
+                            />
+                          )}
+                        </td>
                         <td className="px-4 py-4 text-slate-400 text-xs">{idx + 1}</td>
                         <td className="px-4 py-4 text-slate-900 max-w-xs">
                           {isEditing ? (
@@ -311,9 +597,6 @@ function QnaPage() {
                             <span className="text-slate-300">—</span>
                           )}
                         </td>
-                        <td className="px-4 py-4 text-xs text-slate-500 truncate max-w-[8rem]" title={item.sourceDocument ?? ""}>
-                          {item.sourceDocument || <span className="text-slate-300">—</span>}
-                        </td>
                         <td className="px-4 py-4">
                           <span
                             className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium ring-1 ring-inset ${STATUS_CLASS[item.status]}`}
@@ -344,7 +627,12 @@ function QnaPage() {
                                 </button>
                               </>
                             ) : item.status === "deleted" ? (
-                              <span className="text-xs text-slate-400">В корзине</span>
+                              <button
+                                onClick={() => restore(item.id)}
+                                className="px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                              >
+                                Восстановить
+                              </button>
                             ) : (
                               <>
                                 {item.status === "unanswered" && (
@@ -380,6 +668,73 @@ function QnaPage() {
           </div>
         </div>
       </div>
+
+      {adding && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-slate-900/40"
+            onClick={() => !creating && setAdding(false)}
+          />
+          <div className="relative w-full max-w-lg bg-white rounded-xl shadow-xl border border-slate-200">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
+              <h2 className="text-base font-semibold text-slate-900">Новая пара вопрос–ответ</h2>
+              <button
+                type="button"
+                onClick={() => !creating && setAdding(false)}
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+                aria-label="Закрыть"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="px-5 py-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Вопрос</label>
+                <textarea
+                  value={newQ}
+                  onChange={(e) => setNewQ(e.target.value)}
+                  rows={2}
+                  autoFocus
+                  placeholder="Например: Как записаться на пересдачу?"
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Ответ</label>
+                <textarea
+                  value={newA}
+                  onChange={(e) => setNewA(e.target.value)}
+                  rows={4}
+                  placeholder="Текст ответа, который увидит студент"
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => setAdding(false)}
+                disabled={creating}
+                className="px-3.5 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-60"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={createItem}
+                disabled={creating}
+                className="px-3.5 py-2 text-sm font-medium bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors shadow-sm disabled:opacity-60"
+              >
+                {creating ? "Добавление..." : "Добавить"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

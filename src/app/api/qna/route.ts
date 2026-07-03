@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { qnaItems } from "@/db/schema";
 import { and, eq, gte, lte, ne, type SQL } from "drizzle-orm";
+import { upsertQnaItem } from "@/lib/qdrant";
 
 const STATUS_VALUES = ["unanswered", "active", "deleted"] as const;
 type StatusValue = (typeof STATUS_VALUES)[number];
@@ -36,4 +37,32 @@ export async function GET(request: NextRequest) {
   });
 
   return NextResponse.json(items);
+}
+
+export async function POST(request: NextRequest) {
+  let body: { question?: unknown; answer?: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Некорректный запрос" }, { status: 400 });
+  }
+
+  const question = typeof body.question === "string" ? body.question.trim() : "";
+  const answer = typeof body.answer === "string" ? body.answer.trim() : "";
+
+  if (!question || !answer) {
+    return NextResponse.json(
+      { error: "Заполните вопрос и ответ" },
+      { status: 400 }
+    );
+  }
+
+  const [item] = await db
+    .insert(qnaItems)
+    .values({ question, answer, status: "active" })
+    .returning();
+
+  await upsertQnaItem({ id: item.id, question: item.question, answer: item.answer });
+
+  return NextResponse.json(item, { status: 201 });
 }
