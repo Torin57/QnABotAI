@@ -30,7 +30,7 @@
 
 * [x] Threat modeling (лёгкий, под масштаб пилота) — `Docs/threat-model.md`: активы, закрытые угрозы, принятые риски, шпаргалка реагирования (2026-07-05). Полноценный threat modeling для public SaaS — см. ниже.
 * [ ] Threat modeling для public SaaS режима — пересмотр `threat-model.md` по триггерам из него (второй админ, несколько серверов, SaaS)
-* [ ] Продумать trust boundaries и tenant boundaries
+* [x] Продумать trust boundaries и tenant boundaries — trust: секция в `threat-model.md` (2026-07-05); tenant: N/A на пилоте, multi-tenant → P2
 * [x] Secret separation (dev/staging/prod) — `.env.{env}.local` + шаблоны, `APP_ENV`, preload; см. `spec.md` §7.1, `decisions.md` 2026-07-04
 * [x] Отдельный Telegram bot для production — `@VibeCodingFAQBot` создан, токен в `.env.production.local` (см. `decisions.md`, 2026-07-04)
 
@@ -52,13 +52,13 @@
 
 ### AI / tooling hygiene
 
-* [ ] Проверить Cursor / AI tooling boundaries
+* [x] Проверить Cursor / AI tooling boundaries — `.cursorignore` дополнен (`backups/`, `*.db.gz`); границы и Privacy Mode — `decisions.md` 2026-07-05
 * [x] Разовый аудит dependency vulnerabilities — 3 high закрыты `npm audit fix`, 8 moderate приняты осознанно (см. `decisions.md` 2026-07-05)
 * [ ] Регулярная проверка dependency vulnerabilities — повторять `npm audit` периодически (например, раз в месяц или при деплое). [done-when: определён и работает регулярный процесс]
 * [x] Настроить basic backup strategy — `scripts/backup.sh` (горячий бэкап `logs.db`, ротация 7 шт.) + cron ежедневно в 03:00 + `scripts/reindex.ts` для восстановления Qdrant из SQLite (2026-07-05)
 * [ ] Регулярный бэкап в холодное хранилище Таймвеб — сейчас архивы лежат только на диске самого сервера; при отказе диска пропадут вместе с базой. Нужно копировать `backups/logs-*.db.gz` в S3-совместимое холодное хранилище Timeweb Cloud (например, `rclone`/`s3cmd` по тому же cron). [done-when: свежий архив автоматически появляется в бакете Таймвеб, восстановление из него проверено]
-* [x] Проверить production .env hygiene перед релизом — в git только шаблоны, секретов в истории нет, права 600 (2026-07-05). Хвост: добавить `TEACHER_CONTACT_URL` в `.env.production.local` до запуска prod (см. ниже)
-* [ ] Заполнить `TEACHER_CONTACT_URL` в `.env.production.local` — переменная обязательная, без неё `validateEnv()` не даст запустить prod. [done-when: переменная задана, `npm start` проходит валидацию]
+* [x] Проверить production .env hygiene перед релизом — в git только шаблоны, секретов в истории нет, права 600 (2026-07-05)
+* [x] Заполнить `TEACHER_CONTACT_URL` в `.env.production.local` — задано, все обязательные переменные prod на месте (проверено 2026-07-05)
 * [ ] Первый реальный запуск production (`npm start`, `APP_ENV=production`) — `.env.production.local` подготовлен, бот `@VibeCodingFAQBot` создан; сам запуск ещё не выполнялся. [done-when: prod-бот отвечает студентам, админка работает под prod-паролем]
 
 ---

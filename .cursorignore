@@ -42,11 +42,13 @@ dist/
 # =========================
 
 *.db
+*.db.gz
 *.sqlite
 *.sqlite3
 
 qdrant_data/
 qdrant_storage/
+backups/
 
 # =========================
 
