@@ -431,7 +431,7 @@ function QnaPage() {
 
             <label
               htmlFor={docInputId}
-              className={`inline-flex items-center gap-2 px-3.5 py-2 bg-white text-slate-700 text-sm font-medium rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors ${
+              className={`inline-flex items-center gap-2 px-3.5 py-2 bg-white text-emerald-700 text-sm font-medium rounded-lg border border-emerald-600 hover:bg-emerald-50 transition-colors ${
                 uploading ? "pointer-events-none opacity-60" : "cursor-pointer"
               }`}
             >

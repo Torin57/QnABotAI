@@ -8,6 +8,30 @@ import { upsertQnaItem } from "@/lib/qdrant";
 const EXCEL_MIME =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
+/** Лимиты импорта — защита от случайной/злонамеренной загрузки гигантских наборов. */
+export const MAX_IMPORT_PAIRS = 500;
+export const MAX_QUESTION_LENGTH = 1000;
+export const MAX_ANSWER_LENGTH = 8000;
+
+/** Ошибка нарушения лимитов импорта — API отдаёт её админу как 400 с понятным текстом. */
+export class ImportLimitError extends Error {}
+
+function enforceImportLimits(
+  pairs: { question: string; answer: string }[]
+): { question: string; answer: string }[] {
+  if (pairs.length > MAX_IMPORT_PAIRS)
+    throw new ImportLimitError(
+      `Слишком много пар вопрос-ответ: ${pairs.length} (макс. ${MAX_IMPORT_PAIRS} за одну загрузку)`
+    );
+
+  // Слишком длинные поля обрезаем, а не отклоняем: LLM-путь может дать длинный ответ,
+  // и терять всю загрузку из-за одной строки неудобно.
+  return pairs.map((p) => ({
+    question: p.question.slice(0, MAX_QUESTION_LENGTH),
+    answer: p.answer.slice(0, MAX_ANSWER_LENGTH),
+  }));
+}
+
 export async function processDocument(
   buffer: Buffer,
   mimeType: string,
@@ -23,6 +47,8 @@ export async function processDocument(
     const text = await extractTextFromBuffer(buffer, mimeType);
     pairs = await extractQAPairsFromText(text);
   }
+
+  pairs = enforceImportLimits(pairs);
 
   if (pairs.length === 0) return 0;
 

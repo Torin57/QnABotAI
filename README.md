@@ -92,25 +92,48 @@ cd QnABotAI
 npm install
 ```
 
-### 3. Файл окружения `.env`
+### 3. Файлы окружения
 
-В корне создайте файл **`.env`** (он в `.gitignore`). Пример:
+Секреты **не** кладутся в один общий `.env` на все среды. Используйте gitignored-файлы по окружению (подробности — [`Docs/spec.md`](Docs/spec.md) §7.1):
 
-```env
-# Обязательные
-TG_BOT_TOKEN=ваш_токен_от_BotFather
-MISTRAL_API_KEY=ваш_ключ_Mistral
+| Окружение | Файл | Шаблон |
+|-----------|------|--------|
+| Локальная разработка | `.env.development.local` | `.env.development.example` |
+| Staging | `.env.staging.local` | `.env.staging.example` |
+| Production | `.env.production.local` | `.env.production.example` |
 
-# Опционально (по умолчанию Qdrant на localhost:6333)
-# QDRANT_HOST=localhost
-# QDRANT_PORT=6333
+**Быстрый старт (dev):**
 
-# Порт веб-приложения (по умолчанию 3000)
-# PORT=3000
+```bash
+cp .env.development.example .env.development.local
+# отредактируйте .env.development.local — подставьте ключи
 ```
 
-- **`TG_BOT_TOKEN`** — токен бота в Telegram ([BotFather](https://t.me/BotFather)).
+**Обязательные переменные** в `.env.development.local` / `.env.production.local`:
+
+```env
+TG_BOT_TOKEN=...                  # отдельный бот на каждое окружение (@BotFather)
+MISTRAL_API_KEY=...
+ADMIN_PASSWORD_HASH_BASE64=...    # npm run admin:hash-password -- "пароль"
+SESSION_SECRET=...                # openssl rand -hex 32
+```
+
+- **`TG_BOT_TOKEN`** — для **production** создайте **отдельного** бота; dev-токен в prod не использовать.
 - **`MISTRAL_API_KEY`** — ключ в [консоли Mistral](https://console.mistral.ai/).
+- **`ADMIN_PASSWORD_HASH_BASE64`** — bcrypt-хеш пароля для входа в админку, в base64 (см. ниже).
+- **`SESSION_SECRET`** — случайная строка для подписи сессионных cookie.
+
+Опционально в `.env` или `.env.local`: `QDRANT_HOST`, `QDRANT_PORT`, `PORT`.
+
+#### Задать пароль админки
+
+```bash
+npm run admin:hash-password -- "мойПароль"
+```
+
+Скрипт выведет строку `ADMIN_PASSWORD_HASH_BASE64=...` — скопируйте её в `.env.development.local` (или `.env.production.local` на сервере).
+
+> Хеш хранится в base64, а не как обычный bcrypt-хеш: символы `$` в обычном хеше (`$2b$10$...`) Next.js по ошибке принимает за ссылки на другие переменные окружения и портит значение при загрузке `.env`.
 
 ### 4. Qdrant через Docker Compose
 
@@ -176,9 +199,9 @@ npm start
 ## Быстрый чеклист перед работой ✅
 
 1. Запущен **Qdrant** (`docker compose ps`).
-2. Заполнены **`TG_BOT_TOKEN`** и **`MISTRAL_API_KEY`** в `.env`.
+2. Заполнены секреты в **`.env.development.local`** (`TG_BOT_TOKEN`, `MISTRAL_API_KEY`, `ADMIN_PASSWORD_HASH_BASE64`, `SESSION_SECRET`).
 3. Выполнены миграции (**`npm run db:migrate`**).
-4. Запущен **`npm run dev:server`** (или `build` + `start`).
+4. Запущен **`npm run dev:server`** (или `build` + `start` на prod с `.env.production.local`).
 
 ---
 
@@ -190,7 +213,8 @@ npm start
 
 ## Безопасность (кратко) 🔐
 
-- Секреты только в **`.env`**, не коммитить.
+- Секреты в **`.env.*.local`** по окружению, не коммитить; шаблоны — `*.example`.
+- На production — **отдельный** Telegram-бот (не dev-токен).
 - Ограничения на размер и MIME-типы загрузок — по спецификации в **`Docs/spec.md`** (раздел про безопасность).
 
 ---

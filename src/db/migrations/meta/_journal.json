@@ -15,6 +15,13 @@
       "when": 1783024976878,
       "tag": "0001_fresh_yellowjacket",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1783262686168,
+      "tag": "0002_rapid_piledriver",
+      "breakpoints": true
     }
   ]
 }

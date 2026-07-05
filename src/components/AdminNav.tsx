@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 const NAV_ITEMS = [
   { href: "/admin/qna", label: "База знаний" },
@@ -10,9 +10,16 @@ const NAV_ITEMS = [
 
 export function AdminNav() {
   const pathname = usePathname();
+  const router = useRouter();
+
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.replace("/admin/login");
+    router.refresh();
+  }
 
   return (
-    <nav className="flex items-center gap-1">
+    <nav className="flex items-center gap-1 w-full">
       {NAV_ITEMS.map((item) => {
         const isActive = pathname === item.href;
         return (
@@ -27,6 +34,13 @@ export function AdminNav() {
           </Link>
         );
       })}
+      <button
+        type="button"
+        onClick={handleLogout}
+        className="ml-auto px-3 py-1.5 text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors"
+      >
+        Выйти
+      </button>
     </nav>
   );
 }

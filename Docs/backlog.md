@@ -28,33 +28,38 @@
 
 ### Core security / trust boundaries
 
-* [ ] Threat modeling для public SaaS режима
+* [x] Threat modeling (лёгкий, под масштаб пилота) — `Docs/threat-model.md`: активы, закрытые угрозы, принятые риски, шпаргалка реагирования (2026-07-05). Полноценный threat modeling для public SaaS — см. ниже.
+* [ ] Threat modeling для public SaaS режима — пересмотр `threat-model.md` по триггерам из него (второй админ, несколько серверов, SaaS)
 * [ ] Продумать trust boundaries и tenant boundaries
-* [ ] Secret separation (dev/staging/prod)
-* [ ] Отдельный Telegram bot для production
+* [x] Secret separation (dev/staging/prod) — `.env.{env}.local` + шаблоны, `APP_ENV`, preload; см. `spec.md` §7.1, `decisions.md` 2026-07-04
+* [x] Отдельный Telegram bot для production — `@VibeCodingFAQBot` создан, токен в `.env.production.local` (см. `decisions.md`, 2026-07-04)
 
 ### Upload / file handling security
 
-* [ ] Безопасная обработка upload файлов
-* [ ] Ограничения размера файлов
-* [ ] Ограничения MIME/type файлов
-* [ ] Upload isolation (non-public storage)
-* [ ] Валидация Excel / CSV импорта
-* [ ] Ограничение количества строк / размера импортов
+* [x] Безопасная обработка upload файлов — magic bytes проверяются перед парсингом (`%PDF`, ZIP `PK\x03\x04`), несовпадение → 400
+* [x] Ограничения размера файлов — 10 МБ в `upload/route.ts`
+* [x] Ограничения MIME/type файлов — allowlist pdf/docx/xlsx (с фолбэком на расширение)
+* [x] Upload isolation (non-public storage) — файлы не сохраняются на диск вовсе: буфер парсится в памяти и отбрасывается
+* [x] Валидация Excel / CSV импорта — magic bytes + пустые/неполные строки пропускаются в `parseExcelQA`
+* [x] Ограничение количества строк / размера импортов — макс. 500 пар за загрузку, вопрос ≤1000 символов, ответ ≤8000 (см. `spec.md` §7.2)
 
 ### Auth / abuse protection
 
-* [ ] Admin panel hardening
-* [ ] Добавить авторизацию
-* [ ] Rate limiting
-* [ ] Basic audit logging
+* [x] Admin panel hardening — пароль без логина, подписанная сессия-cookie, `middleware.ts` защищает страницы и API (см. `decisions.md`, 2026-07-03)
+* [x] Добавить авторизацию
+* [x] Rate limiting — бот: 3 вопроса/мин на чат (in-memory, анонимность сохранена); логин: 5 неудач с IP → 15 мин блокировки (см. `spec.md` §3.2, §5.0; `decisions.md` 2026-07-05)
+* [x] Basic audit logging — ошибки обработки сообщений бота пишутся в `bot_log` (verdict=`error`) и видны на `/admin/log` (см. `spec.md` §3.4)
 
 ### AI / tooling hygiene
 
 * [ ] Проверить Cursor / AI tooling boundaries
-* [ ] Регулярная проверка dependency vulnerabilities
-* [ ] Настроить basic backup strategy
-* [ ] Проверить production .env hygiene перед релизом
+* [x] Разовый аудит dependency vulnerabilities — 3 high закрыты `npm audit fix`, 8 moderate приняты осознанно (см. `decisions.md` 2026-07-05)
+* [ ] Регулярная проверка dependency vulnerabilities — повторять `npm audit` периодически (например, раз в месяц или при деплое). [done-when: определён и работает регулярный процесс]
+* [x] Настроить basic backup strategy — `scripts/backup.sh` (горячий бэкап `logs.db`, ротация 7 шт.) + cron ежедневно в 03:00 + `scripts/reindex.ts` для восстановления Qdrant из SQLite (2026-07-05)
+* [ ] Регулярный бэкап в холодное хранилище Таймвеб — сейчас архивы лежат только на диске самого сервера; при отказе диска пропадут вместе с базой. Нужно копировать `backups/logs-*.db.gz` в S3-совместимое холодное хранилище Timeweb Cloud (например, `rclone`/`s3cmd` по тому же cron). [done-when: свежий архив автоматически появляется в бакете Таймвеб, восстановление из него проверено]
+* [x] Проверить production .env hygiene перед релизом — в git только шаблоны, секретов в истории нет, права 600 (2026-07-05). Хвост: добавить `TEACHER_CONTACT_URL` в `.env.production.local` до запуска prod (см. ниже)
+* [ ] Заполнить `TEACHER_CONTACT_URL` в `.env.production.local` — переменная обязательная, без неё `validateEnv()` не даст запустить prod. [done-when: переменная задана, `npm start` проходит валидацию]
+* [ ] Первый реальный запуск production (`npm start`, `APP_ENV=production`) — `.env.production.local` подготовлен, бот `@VibeCodingFAQBot` создан; сам запуск ещё не выполнялся. [done-when: prod-бот отвечает студентам, админка работает под prod-паролем]
 
 ---
 
@@ -104,6 +109,7 @@
 
 * [ ] Versioning FAQ
 * [ ] Conflict resolution
+* [ ] Развести путь к `logs.db` по окружениям (dev/staging/prod) — сейчас имя файла БД захардкожено в `src/db/index.ts` и `drizzle.config.ts`, не завязано на `APP_ENV` как секреты (см. `decisions.md`, 2026-07-04, аудит секретов). Не проблема, пока dev/staging/prod не окажутся на одной машине. [done-when: путь к БД зависит от `APP_ENV` или задаётся явной переменной окружения]
 
 ---
 

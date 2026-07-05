@@ -1,4 +1,4 @@
-import "dotenv/config";
+import { validateEnv } from "./src/lib/load-env";
 import { createServer } from "node:http";
 import { parse } from "node:url";
 import next from "next";
@@ -8,6 +8,8 @@ const dev = process.env.NODE_ENV !== "production";
 const port = parseInt(process.env.PORT ?? "3000", 10);
 
 async function main() {
+  validateEnv();
+
   // Start Telegram bot
   await startBot();
 

@@ -3,6 +3,13 @@ import { db } from "@/db";
 import { qnaItems, botLog } from "@/db/schema";
 import { ensureCollection, searchQna, SearchResult } from "@/lib/qdrant";
 import { mistral } from "@/lib/mistral";
+import { createRateLimiter } from "@/lib/rate-limit";
+
+// 3 вопроса в минуту на чат; счётчик только в памяти (chat_id не сохраняется)
+const messageRateLimiter = createRateLimiter({
+  limit: 3,
+  windowMs: 60 * 1000,
+});
 
 const JUDGE_PROMPT = `Ты — ассистент выбора ответа из базы знаний.
 Тебе даны вопрос пользователя и список кандидатов из базы знаний.
@@ -70,6 +77,20 @@ export function createBot() {
 
   bot.on("message:text", async (ctx) => {
     const userQuestion = ctx.message.text;
+
+    const rate = messageRateLimiter.check(String(ctx.chat.id));
+
+    if (!rate.allowed) {
+      console.log("[bot] rate limit exceeded for chat");
+
+      if (rate.shouldNotify) {
+        await ctx.reply(
+          "Слишком много вопросов подряд. Подождите минуту и попробуйте снова."
+        );
+      }
+
+      return;
+    }
 
     console.log("[bot] user message:", userQuestion);
 
@@ -141,6 +162,8 @@ export function createBot() {
     } catch (err) {
       console.error("[bot] error handling message:", err);
 
+      await logBotError(userQuestion, err);
+
       await ctx.reply("Произошла ошибка. Попробуйте позже.");
     }
   });
@@ -155,6 +178,21 @@ async function logUnanswered(questionText: string) {
     question: questionText,
     status: "unanswered",
   });
+}
+
+async function logBotError(questionText: string, err: unknown) {
+  try {
+    const message = err instanceof Error ? err.message : String(err);
+
+    await db.insert(botLog).values({
+      question: questionText,
+      verdict: "error",
+      error: message.slice(0, 500),
+    });
+  } catch (logErr) {
+    // Ошибка записи лога не должна ронять обработчик
+    console.error("[bot] failed to log error to bot_log:", logErr);
+  }
 }
 
 async function logBotEvent(
@@ -172,10 +210,16 @@ async function logBotEvent(
 }
 
 function contactKeyboard() {
+  const teacherContactUrl = process.env.TEACHER_CONTACT_URL;
+
+  if (!teacherContactUrl) {
+    throw new Error("Не задана переменная окружения TEACHER_CONTACT_URL");
+  }
+
   return {
     reply_markup: new InlineKeyboard().url(
       "Связаться с преподавателем",
-      "https://t.me/"
+      teacherContactUrl
     ),
   };
 }

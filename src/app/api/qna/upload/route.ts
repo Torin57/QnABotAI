@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { processDocument } from "@/lib/parser";
+import { processDocument, ImportLimitError } from "@/lib/parser";
 
 const MAX_SIZE = 10 * 1024 * 1024;
 const ALLOWED_TYPES = [
@@ -26,6 +26,17 @@ function resolveEffectiveMime(file: File): string | null {
   return null;
 }
 
+/** Проверка magic bytes: содержимое должно соответствовать заявленному типу.
+ * PDF начинается с "%PDF", docx/xlsx — это ZIP-архивы ("PK\x03\x04"). */
+function matchesMagicBytes(buffer: Buffer, mimeType: string): boolean {
+  if (buffer.length < 4) return false;
+  if (mimeType === "application/pdf") {
+    return buffer.subarray(0, 4).toString("latin1") === "%PDF";
+  }
+  // docx и xlsx — ZIP-контейнеры
+  return buffer[0] === 0x50 && buffer[1] === 0x4b && buffer[2] === 0x03 && buffer[3] === 0x04;
+}
+
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
   const file = formData.get("file") as File | null;
@@ -40,10 +51,19 @@ export async function POST(request: NextRequest) {
 
   const buffer = Buffer.from(await file.arrayBuffer());
 
+  if (!matchesMagicBytes(buffer, effectiveMime))
+    return NextResponse.json(
+      { error: "Содержимое файла не соответствует его типу" },
+      { status: 400 }
+    );
+
   try {
     const count = await processDocument(buffer, effectiveMime, file.name);
     return NextResponse.json({ imported: count });
   } catch (err) {
+    if (err instanceof ImportLimitError)
+      return NextResponse.json({ error: err.message }, { status: 400 });
+
     const statusCode =
       err && typeof err === "object" && "statusCode" in err
         ? (err as { statusCode: number }).statusCode

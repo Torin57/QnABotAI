@@ -2,29 +2,33 @@
 
 import { useEffect, useState } from "react";
 
-type Verdict = "answered" | "null";
+type Verdict = "answered" | "null" | "error";
 
 interface LogEntry {
   id: number;
   question: string;
   verdict: Verdict;
   answer: string | null;
+  error: string | null;
   createdAt: string;
 }
 
 const VERDICT_LABEL: Record<Verdict, string> = {
   answered: "Отвечен",
   null: "Не найден",
+  error: "Ошибка",
 };
 
 const VERDICT_CLASS: Record<Verdict, string> = {
   answered: "bg-emerald-50 text-emerald-700 ring-emerald-200",
   null: "bg-amber-50 text-amber-700 ring-amber-200",
+  error: "bg-red-50 text-red-700 ring-red-200",
 };
 
 const VERDICT_DOT: Record<Verdict, string> = {
   answered: "bg-emerald-500",
   null: "bg-amber-500",
+  error: "bg-red-500",
 };
 
 function LogPage() {
@@ -123,7 +127,11 @@ function LogPage() {
                         </span>
                       </td>
                       <td className="px-4 py-4 text-slate-700 max-w-md">
-                        {item.answer ? (
+                        {item.verdict === "error" && item.error ? (
+                          <p className="line-clamp-2 leading-relaxed text-red-600" title={item.error}>
+                            {item.error}
+                          </p>
+                        ) : item.answer ? (
                           <p className="line-clamp-2 leading-relaxed" title={item.answer}>
                             {item.answer}
                           </p>

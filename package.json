@@ -5,12 +5,14 @@
   "main": "index.js",
   "scripts": {
     "dev": "next dev -H 127.0.0.1",
-    "dev:server": "tsx server.ts",
+    "dev:server": "APP_ENV=development tsx --import ./src/lib/preload-env.ts server.ts",
     "build": "next build",
-    "start": "tsx server.ts",
+    "start": "APP_ENV=production NODE_ENV=production tsx --import ./src/lib/preload-env.ts server.ts",
     "lint": "next lint",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "admin:hash-password": "tsx scripts/hash-password.ts",
+    "qdrant:reindex": "tsx --import ./src/lib/preload-env.ts scripts/reindex.ts"
   },
   "keywords": [],
   "author": "",
@@ -21,6 +23,7 @@
   "dependencies": {
     "@mistralai/mistralai": "^2.2.1",
     "@qdrant/js-client-rest": "^1.17.0",
+    "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.10.0",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
@@ -35,6 +38,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.4",
+    "@types/bcryptjs": "^2.4.6",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.6.0",
     "@types/react": "^19.2.14",
