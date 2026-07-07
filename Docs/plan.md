@@ -56,16 +56,16 @@
 
 ---
 
-## Шаг 1. Pre-flight (перед остановкой dev)
+## Шаг 1. Pre-flight (перед остановкой dev) ✅ (2026-07-07)
 
-- [ ] `docker compose ps` — Qdrant up.
-- [ ] `npm run build` — сборка без ошибок.
-- [ ] `npm audit` — нет новых critical/high.
-- [ ] Проверка prod-env (`validateEnv`) — все 5 обязательных переменных на месте.
-- [ ] В `logs-prod.db` есть нужные `active`-записи.
-- [ ] На prod-сервере деплой: **`npm ci`**, не `npm install`.
+- [x] `docker compose ps` — Qdrant up (контейнер `qnabotai-qdrant-1`, Up 5 weeks).
+- [x] `npm run build` — сборка без ошибок (Next.js 16.2.10).
+- [x] `npm audit` — нет critical/high (8 moderate, dev-зависимости).
+- [x] Проверка prod-env (`validateEnv`) — все 7 обязательных переменных на месте.
+- [x] В `logs-prod.db` есть нужные `active`-записи — 2 FAQ (Пушкин / Сталин) из dev; `qna_prod` reindex 2/2.
+- [x] На prod-сервере деплой: **`npm ci`**, не `npm install`.
 
-**Критерий:** build зелёный, env валиден, prod-БД готова.
+**Критерий:** build зелёный, env валиден, prod-БД готова — **пройден**.
 
 ---
 
@@ -165,4 +165,4 @@
 
 ## Порядок работы в чате
 
-Двигаемся **по одному шагу**. Сейчас: **шаг 1** (pre-flight).
+Двигаемся **по одному шагу**. Сейчас: **шаг 2** (DNS).
