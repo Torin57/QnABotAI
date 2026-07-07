@@ -37,7 +37,7 @@
 |------|------------|
 | Бот | [grammY](https://grammy.dev/), Node.js |
 | Приложение | [Next.js](https://nextjs.org/) (App Router), React, Tailwind CSS |
-| Данные | SQLite + [Drizzle ORM](https://orm.drizzle.team/) (`logs.db` в корне) |
+| Данные | SQLite + [Drizzle ORM](https://orm.drizzle.team/) (`DATABASE_PATH`, по умолчанию `data/logs-{env}.db`) |
 | Векторы | [Qdrant](https://qdrant.tech/) (Docker, volume `./qdrant_storage`) |
 | AI | Mistral API (`mistral-embed`, `mistral-small-latest`) |
 | Документы | `pdf-parse`, `mammoth`, `exceljs` |
@@ -61,7 +61,7 @@
 ```
 ├── server.ts              # Единая точка входа: Telegram-бот + HTTP-сервер Next.js
 ├── docker-compose.yml     # Сервис Qdrant + volume в ./qdrant_storage
-├── drizzle.config.ts      # Конфиг Drizzle Kit (SQLite → ./logs.db)
+├── drizzle.config.ts      # Drizzle Kit (путь из DATABASE_PATH)
 ├── package.json
 ├── src/
 │   ├── app/               # Страницы и API-роуты админки (Next.js)
@@ -70,7 +70,7 @@
 │   └── lib/               # Qdrant, Mistral, парсеры файлов
 ├── Docs/
 │   └── spec.md            # Спецификация (SDD)
-└── logs.db                # SQLite (создаётся при работе; не коммитить)
+└── data/                  # SQLite-файлы по окружению (не коммитить, кроме .gitkeep)
 ```
 
 Единый маршрут админки: **`/admin/qna`** — один список записей с фильтром по статусу (Все / Неотвеченные / Активные / Удалённые).
@@ -116,6 +116,8 @@ TG_BOT_TOKEN=...                  # отдельный бот на каждое 
 MISTRAL_API_KEY=...
 ADMIN_PASSWORD_HASH_BASE64=...    # npm run admin:hash-password -- "пароль"
 SESSION_SECRET=...                # openssl rand -hex 32
+DATABASE_PATH=data/logs-dev.db    # или data/logs-prod.db на production
+QDRANT_COLLECTION=qna_dev         # или qna_prod на production
 ```
 
 - **`TG_BOT_TOKEN`** — для **production** создайте **отдельного** бота; dev-токен в prod не использовать.
@@ -155,7 +157,7 @@ docker compose down
 
 ### 5. Миграции SQLite (Drizzle)
 
-База **`logs.db`** создаётся/используется в корне; SQL-миграции лежат в **`src/db/migrations/`**.
+База задаётся **`DATABASE_PATH`** в `.env.{env}.local` (например `data/logs-dev.db`). SQL-миграции — в **`src/db/migrations/`**, применение: `npm run db:migrate` (с `APP_ENV=development`).
 
 Применить миграции через Drizzle Kit:
 
@@ -199,7 +201,7 @@ npm start
 ## Быстрый чеклист перед работой ✅
 
 1. Запущен **Qdrant** (`docker compose ps`).
-2. Заполнены секреты в **`.env.development.local`** (`TG_BOT_TOKEN`, `MISTRAL_API_KEY`, `ADMIN_PASSWORD_HASH_BASE64`, `SESSION_SECRET`).
+2. Заполнены секреты в **`.env.development.local`** (`TG_BOT_TOKEN`, `MISTRAL_API_KEY`, `ADMIN_PASSWORD_HASH_BASE64`, `SESSION_SECRET`, `TEACHER_CONTACT_URL`, **`DATABASE_PATH`**).
 3. Выполнены миграции (**`npm run db:migrate`**).
 4. Запущен **`npm run dev:server`** (или `build` + `start` на prod с `.env.production.local`).
 

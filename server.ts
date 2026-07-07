@@ -1,4 +1,3 @@
-import { validateEnv } from "./src/lib/load-env";
 import { createServer } from "node:http";
 import { parse } from "node:url";
 import next from "next";
@@ -8,7 +7,8 @@ const dev = process.env.NODE_ENV !== "production";
 const port = parseInt(process.env.PORT ?? "3000", 10);
 
 async function main() {
-  validateEnv();
+  console.log(`[server] database: ${process.env.DATABASE_PATH}`);
+  console.log(`[server] qdrant collection: ${process.env.QDRANT_COLLECTION}`);
 
   // Start Telegram bot
   await startBot();

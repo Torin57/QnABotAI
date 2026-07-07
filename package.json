@@ -9,8 +9,8 @@
     "build": "next build",
     "start": "APP_ENV=production NODE_ENV=production tsx --import ./src/lib/preload-env.ts server.ts",
     "lint": "next lint",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:generate": "APP_ENV=${APP_ENV:-development} tsx --import ./src/lib/preload-env.ts node_modules/.bin/drizzle-kit generate",
+    "db:migrate": "APP_ENV=${APP_ENV:-development} tsx --import ./src/lib/preload-env.ts node_modules/.bin/drizzle-kit migrate",
     "admin:hash-password": "tsx scripts/hash-password.ts",
     "qdrant:reindex": "tsx --import ./src/lib/preload-env.ts scripts/reindex.ts"
   },

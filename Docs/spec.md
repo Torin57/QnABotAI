@@ -132,7 +132,7 @@ Read-only список последних 200 обращений к боту (`G
 - `/src/db` — схемы Drizzle ORM, миграции, подключение к SQLite.
 - `/src/lib/qdrant` — настройка клиента Qdrant.
 - `/src/lib/parser` — парсинг PDF/DOCX/Excel и извлечение пар вопрос-ответ.
-- `logs.db` — файл базы данных SQLite (в корне).
+- `data/` — SQLite по окружениям (`DATABASE_PATH` в `.env.*.local`, см. §7.1); каталог `data/` в git только с `.gitkeep`.
 - `.env` / `.env.*.local` — секреты по окружениям (см. §7.1); шаблоны — `*.example` в корне.
 
 ## 7. Требования к безопасности
@@ -153,7 +153,7 @@ Read-only список последних 200 обращений к боту (`G
 
 **Telegram-бот:** на каждое окружение — **отдельный** бот и `TG_BOT_TOKEN` (через [@BotFather](https://t.me/BotFather)). Dev/staging не должны использовать prod-токен.
 
-**Обязательные переменные:** `TG_BOT_TOKEN`, `MISTRAL_API_KEY`, `ADMIN_PASSWORD_HASH_BASE64`, `SESSION_SECRET`, `TEACHER_CONTACT_URL`. При старте `server.ts` проверяет их наличие (`src/lib/load-env.ts`).
+**Обязательные переменные:** `TG_BOT_TOKEN`, `MISTRAL_API_KEY`, `ADMIN_PASSWORD_HASH_BASE64`, `SESSION_SECRET`, `TEACHER_CONTACT_URL`, **`DATABASE_PATH`**, **`QDRANT_COLLECTION`** (имя коллекции Qdrant, например `qna_dev` / `qna_prod`). При старте `preload-env.ts` проверяют их наличие (`src/lib/load-env.ts`). В логах старта: `[server] database: …`, `[server] qdrant collection: …`.
 
 **`TEACHER_CONTACT_URL`:** ссылка (например, `https://t.me/username`), которая подставляется в Inline-кнопку «Связаться с преподавателем» (см. §3.2, п.5). Значение своё на каждое окружение, без хардкода в коде.
 
@@ -167,24 +167,23 @@ Read-only список последних 200 обращений к боту (`G
 - Разрешать только типы: `application/pdf`, `application/vnd.openxmlformats-officedocument.wordprocessingml.document`, `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`.
 - **Валидация содержимого:** перед парсингом проверяются magic bytes — PDF должен начинаться с `%PDF`, docx/xlsx — с ZIP-сигнатуры `PK\x03\x04`. Несовпадение → `400` («Содержимое файла не соответствует его типу»).
 - **Лимиты импорта** (`src/lib/parser/index.ts`): не более **500 пар** за одну загрузку (превышение → `400` с понятным текстом); вопрос обрезается до **1000** символов, ответ — до **8000** (обрезаем, а не отклоняем, чтобы не терять всю загрузку из-за одной длинной строки). Действует для обоих путей (Excel и LLM).
-- Файлы `.env`, `logs.db`, `qdrant_storage/`, `backups/`, `node_modules/`, `.next/` в `.gitignore`.
+- Файлы `.env`, `data/`, `qdrant_storage/`, `backups/`, `node_modules/`, `.next/` в `.gitignore`.
 - **Cursor / AI при разработке:** `.cursorignore` в корне (секреты, БД, бэкапы, `qdrant_storage/` не индексируются); Privacy Mode в Cursor — см. `decisions.md` 2026-07-05.
 - Доступ к админке (`/admin/*`) и её API защищён паролем — см. раздел 5.0.
 
 ### 7.3 Бэкапы и восстановление
 
-**Что является источником правды:** только `logs.db` (SQLite: `qna_items` + `bot_log`). Qdrant — производный индекс, он не бэкапится и полностью восстанавливается из SQLite. Секреты (`.env.*.local`) скриптом не бэкапятся — их копию владелец хранит вручную в надёжном месте (менеджер паролей).
+**Что является источником правды:** SQLite-файл по `DATABASE_PATH` из активного окружения (`qna_items` + `bot_log`). Dev и prod на одном VPS используют **разные файлы** (например `data/logs-dev.db` и `data/logs-prod.db`). Qdrant — производный индекс, восстанавливается из SQLite. Секреты (`.env.*.local`) скриптом не бэкапятся.
 
-**Бэкап (автоматический):**
-- `scripts/backup.sh` — горячий бэкап `logs.db` через `sqlite3 ".backup"` (безопасно при работающем боте) → `backups/logs-<дата>.db.gz`; хранятся последние 7 архивов, старые удаляются.
-- Cron: ежедневно в 03:00 UTC в crontab пользователя `ubuntu`, вывод — в `backups/backup.log`. Проверка: `crontab -l`.
-- Off-site копия в холодное хранилище Timeweb — в backlog (P1.5), пока архивы только на диске сервера.
+**Бэкап (автоматический, только production):**
+- `scripts/backup.sh` читает `DATABASE_PATH` из `.env.production.local`, горячий бэкап через `sqlite3 ".backup"` → `backups/<имя-базы>-<дата>.db.gz` + `.sha256`; ротация 7 шт.
+- Cron: ежедневно в 03:00 UTC, вывод в `backups/backup.log`.
 
-**Восстановление (полный порядок):**
-1. Остановить бот/сервер (`npm start` / `npm run dev:server`).
-2. Восстановить базу из архива: `gunzip -c backups/logs-<дата>.db.gz > logs.db`.
-3. Проверить целостность: `sqlite3 logs.db "pragma integrity_check;"` → должно быть `ok`.
-4. Убедиться, что Qdrant запущен (`docker compose up -d`), и пересоздать индекс: `npm run qdrant:reindex` (пересоздаёт коллекцию `qna` из всех `active`-записей `qna_items`; эмбеддинги считаются заново через Mistral, ~100 записей ≈ полминуты).
-5. Запустить сервер и проверить: бот отвечает на известный вопрос, админка показывает данные.
+**Восстановление (полный порядок, production):**
+1. Остановить бот/сервер.
+2. `gunzip -c backups/logs-prod-<дата>.db.gz > data/logs-prod.db` (путь = `DATABASE_PATH` из `.env.production.local`).
+3. `sqlite3 data/logs-prod.db "pragma integrity_check;"` → `ok`.
+4. Qdrant up, `APP_ENV=production npm run qdrant:reindex`.
+5. Запуск и smoke-тест бота/админки.
 
 `npm run qdrant:reindex` (`scripts/reindex.ts`) применим и отдельно — при потере/порче `qdrant_storage/` без потери SQLite, или при рассинхроне индекса с базой.

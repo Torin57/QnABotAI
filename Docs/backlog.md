@@ -109,7 +109,7 @@
 
 * [ ] Versioning FAQ
 * [ ] Conflict resolution
-* [ ] Развести путь к `logs.db` по окружениям (dev/staging/prod) — сейчас имя файла БД захардкожено в `src/db/index.ts` и `drizzle.config.ts`, не завязано на `APP_ENV` как секреты (см. `decisions.md`, 2026-07-04, аудит секретов). Не проблема, пока dev/staging/prod не окажутся на одной машине. [done-when: путь к БД зависит от `APP_ENV` или задаётся явной переменной окружения]
+* [x] Развести путь к SQLite по окружениям — `DATABASE_PATH` в `.env.*.local`, файлы в `data/` (`logs-dev.db`, `logs-prod.db`, `logs-staging.db`); см. `decisions.md` 2026-07-07, `spec.md` §7.1, §7.3
 
 ---
 

@@ -3,8 +3,7 @@
  * Использование: npm run qdrant:reindex
  * (секреты какого окружения брать — через APP_ENV, как у остальных скриптов)
  *
- * Qdrant — производный индекс, источник правды — logs.db. Скрипт нужен
- * для восстановления после потери qdrant_storage/ (бэкапим только logs.db).
+ * Источник правды — SQLite (`DATABASE_PATH`). Скрипт нужен
  *
  * Коллекция пересоздаётся с нуля, чтобы не осталось устаревших точек.
  * Эмбеддинги считаются последовательно — при 429 от Mistral сработает
@@ -22,6 +21,7 @@ async function main(): Promise<void> {
     .from(qnaItems)
     .where(eq(qnaItems.status, "active"));
 
+  console.log(`Коллекция Qdrant: ${COLLECTION}`);
   console.log(`Активных записей в qna_items: ${items.length}`);
 
   const { collections } = await qdrant.getCollections();

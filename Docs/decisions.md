@@ -16,6 +16,35 @@
 
 ---
 
+## 2026-07-07 — Разделение коллекций Qdrant (`QDRANT_COLLECTION`)
+
+**Контекст:** шаг 0.2 плана prod — после разделения SQLite dev/prod общая коллекция `qna` создавала тот же риск (reindex в dev затирает prod-индекс).
+
+**Решение:**
+- Обязательная **`QDRANT_COLLECTION`** в `.env.{env}.local` (`qna_dev`, `qna_staging`, `qna_prod`).
+- `src/lib/qdrant/client.ts` читает имя из env; `validateEnv()` проверяет наличие.
+- `docker-compose.yml`: pin `qdrant/qdrant:v1.18.0` вместо `:latest`.
+- Старая коллекция `qna` не мигрируется автоматически — `APP_ENV=production npm run qdrant:reindex` строит `qna_prod` из `data/logs-prod.db`.
+
+**Почему / альтернативы:** отдельный Qdrant-контейнер на окружение избыточен на одном VPS; разные коллекции в одном инстансе — симметрично `DATABASE_PATH`.
+
+---
+
+## 2026-07-07 — Разделение SQLite по окружениям (`DATABASE_PATH`)
+
+**Контекст:** шаг 0.1 плана prod — dev и prod на одном VPS, но общая `logs.db` создавала риск испортить production из dev (reindex, миграция, тестовые данные).
+
+**Решение:**
+- Единственный путь к БД — обязательная переменная **`DATABASE_PATH`** в `.env.{env}.local` (`data/logs-dev.db`, `data/logs-staging.db`, `data/logs-prod.db`).
+- `src/db/index.ts`: `new Database(DATABASE_PATH)`, `mkdir -p` для каталога; `preload-env.ts` вызывает `validateEnv()` до импорта `@/db`.
+- `drizzle.config.ts` и `npm run db:migrate` используют тот же `loadEnv()` + `DATABASE_PATH`.
+- `scripts/backup.sh` — только prod: читает `DATABASE_PATH` из `.env.production.local`, архив `backups/logs-prod-<дата>.db.gz` + sha256.
+- Одноразовая миграция: `logs.db` → `data/logs-prod.db`, старый файл → `logs.db.legacy` (не удалять сразу).
+
+**Почему / альтернативы:** ветвление по `APP_ENV` в коде хуже, чем явный путь в env — проще staging и перенос на отдельный сервер. Qdrant-коллекции — отдельный шаг 0.2.
+
+---
+
 ## 2026-07-05 — Cursor / AI tooling boundaries
 
 **Контекст:** P1.5 — перед prod нужно явно ограничить, какие данные попадают в Cursor и внешние LLM при разработке с AI-ассистентом.

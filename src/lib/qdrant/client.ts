@@ -5,5 +5,12 @@ export const qdrant = new QdrantClient({
   port: Number(process.env.QDRANT_PORT ?? 6333),
 });
 
-export const COLLECTION = "qna";
+const collection = process.env.QDRANT_COLLECTION?.trim();
+if (!collection) {
+  throw new Error(
+    "QDRANT_COLLECTION не задан. Проверьте .env.{APP_ENV}.local (см. Docs/spec.md §7.1)."
+  );
+}
+
+export const COLLECTION = collection;
 export const VECTOR_SIZE = 1024;

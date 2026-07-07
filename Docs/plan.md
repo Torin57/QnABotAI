@@ -3,16 +3,54 @@
 **Цель:** запустить `@VibeCodingFAQBot` и админку в prod-режиме для двух пользователей (владелец + преподаватель) на **VPS Hostkey** (`82.21.92.121`), доступ к админке — **через домен + nginx + HTTPS**.
 
 **Контекст:**
-- Dev и prod — **одна машина**, одна `logs.db`, один Qdrant (`qdrant_storage/`).
-- Сейчас работает **dev** (`APP_ENV=development`, `npm run dev:server`).
+- Dev и prod могут работать на **одном VPS** на этапе пилота, но используют **независимые ресурсы**: отдельные `.env.*.local`, отдельные SQLite (`logs-dev.db` / `logs-prod.db`) и отдельные коллекции Qdrant (`qna_dev` / `qna_prod`). Один Qdrant-инстанс (Docker), разные коллекции.
+- Сейчас работает **dev** (`APP_ENV=development`, `npm run dev:server`), данные в legacy `logs.db` → при миграции копируем в `logs-prod.db`.
 - Prod-секреты готовы (`.env.production.local`, права 600).
-- Бэкап cron настроен (03:00 UTC); off-site — в backlog, не блокер первого запуска.
+- Бэкап cron настроен (03:00 UTC); off-site S3 — **не блокер пилота**, но локальный бэкап не спасает от потери VPS (backlog P1.5).
 - **Инфраструктура:**
   - **Timeweb Cloud** — только домен и DNS (`catandsnake.ru`), серверов нет.
   - **Hostkey** — два арендованных VPS:
     - `82.21.92.121` — **этот сервер**, здесь QnABot;
     - `82.22.3.63` — другой сервер (`n8n.catandsnake.ru`), не трогаем.
-- **Поддомен админки:** `qnabot.catandsnake.ru` → A-запись в Timeweb DNS → `82.21.92.121`. nginx на QnABot-сервере ставим с нуля.
+- **Поддомен админки:** `qnabot.catandsnake.ru` → A-запись в Timeweb DNS → `82.21.92.121`.
+
+**Внешнее ревью (ChatGPT, 2026-07-05):** 8.5/10 — пилот можно выпускать после блокеров ниже. Согласовано.
+
+---
+
+## Шаг 0. Блокеры (до prod-запуска)
+
+> Без этого шага prod не включаем.
+
+### 0.1 Разделить SQLite dev / prod ✅ (2026-07-07)
+
+- [x] `DATABASE_PATH` — единственный источник пути; обязательна в `validateEnv()`.
+- [x] `src/db/index.ts`, `drizzle.config.ts` (+ `loadEnv`), `scripts/backup.sh`, `preload-env.ts` (+ validate до импорта `@/db`).
+- [x] `data/`, `.gitignore`, примеры `.env.*.example`, обновлены `.env.development.local` / `.env.production.local`.
+- [x] Миграция: `logs.db` → `data/logs-prod.db`, legacy `logs.db.legacy`.
+- [x] Лог при старте: `[server] database: …`
+- [x] **Smoke-тест изоляции** — `DEV TEST` только в `logs-dev.db`, в prod нет (2026-07-07).
+
+**Критерий:** dev → `data/logs-dev.db`, prod → `data/logs-prod.db`; записи не пересекаются.
+
+### 0.2 Закрепить версию Qdrant + разделить коллекции ✅ (2026-07-07)
+
+- [x] `docker-compose.yml`: `qdrant/qdrant:v1.18.0` (совпадает с текущим running).
+- [x] `QDRANT_COLLECTION` в env (`qna_dev` / `qna_prod` / `qna_staging`), обязательна в `validateEnv()`.
+- [x] `src/lib/qdrant/client.ts` — без хардкода `"qna"`.
+- [x] Лог при старте: `[server] qdrant collection: …`
+- [x] Prod reindex в `qna_prod` (см. ниже).
+
+**Миграция:** старая коллекция `qna` в Qdrant остаётся сиротой — можно удалить вручную после проверки `qna_prod`.
+
+**Критерий:** dev reindex → `qna_dev`, prod reindex → `qna_prod`; коллекции не пересекаются.
+
+### 0.3 Restore drill (prod-база)
+
+- [ ] Создать бэкап `logs-prod.db` → восстановить в temp → `npm run qdrant:reindex` → smoke на prod-данных.
+- [ ] (Желательно) `sha256sum` архива в `backup.sh`.
+
+**Критерий:** restore → reindex → бот отвечает на известный вопрос из восстановленной базы.
 
 ---
 
@@ -20,45 +58,60 @@
 
 - [ ] `docker compose ps` — Qdrant up.
 - [ ] `npm run build` — сборка без ошибок.
-- [ ] Проверка prod-env (`validateEnv` через preload) — все 5 обязательных переменных на месте.
-- [ ] Зафиксировать: **dev останавливаем**, prod занимает порт 3000 (localhost only после nginx).
-- [ ] Убедиться, что в `logs.db` есть нужные `active`-записи (это станет prod-базой знаний).
+- [ ] `npm audit` — нет новых critical/high.
+- [ ] Проверка prod-env (`validateEnv`) — все 5 обязательных переменных на месте.
+- [ ] В `logs-prod.db` есть нужные `active`-записи.
+- [ ] На prod-сервере деплой: **`npm ci`**, не `npm install`.
 
-**Критерий:** build зелёный, env валиден, Qdrant жив.
+**Критерий:** build зелёный, env валиден, prod-БД готова.
 
 ---
 
 ## Шаг 2. DNS: поддомен → Hostkey VPS
 
-- [ ] В панели **Timeweb Cloud → DNS**: **A-запись** `qnabot` → **`82.21.92.121`** (Hostkey VPS с QnABot).
+- [ ] В панели **Timeweb Cloud → DNS**: **A-запись** `qnabot` → **`82.21.92.121`**.
 - [ ] Apex, www и `n8n` **не менять**.
-- [ ] Дождаться propagation (`dig +short qnabot.catandsnake.ru` → `82.21.92.121`).
+- [ ] Дождаться propagation.
 
-**Критерий:** поддомен резолвится в IP Hostkey VPS с QnABot.
+**Критерий:** `qnabot.catandsnake.ru` → `82.21.92.121`.
 
 ---
 
 ## Шаг 3. Первый запуск production + systemd
 
-- [ ] Остановить dev-процесс (`server.ts` с `APP_ENV=development`).
-- [ ] `npm start` — приложение слушает `127.0.0.1:3000` (или `0.0.0.0:3000`, nginx всё равно проксирует).
-- [ ] Создать **systemd unit** `qnabotai.service` (WorkingDirectory, User=ubuntu, Restart=always).
-- [ ] `systemctl enable --now qnabotai`, проверить логи: бот подключился, Next.js ready.
+- [ ] Остановить dev-процесс.
+- [ ] `npm start` — приложение на `127.0.0.1:3000`.
+- [ ] **systemd unit** `qnabotai.service`:
+  - `Environment=NODE_ENV=production`, `Environment=APP_ENV=production`
+  - `Restart=always`, `RestartSec=5`, `StartLimitBurst=5`, `StartLimitIntervalSec=60`
+  - (желательно) `NoNewPrivileges=yes`, `PrivateTmp=yes`
+- [ ] `systemctl enable --now qnabotai`
+- [ ] Проверка после рестарта:
+  ```
+  systemctl restart qnabotai
+  systemctl status qnabotai
+  journalctl -u qnabotai -n 50
+  ```
 
-**Критерий:** `curl http://127.0.0.1:3000/admin/login` → 200/redirect, процесс стабилен.
+**Критерий:** `curl http://127.0.0.1:3000/admin/login` → 200/redirect; сервис переживает restart.
 
 ---
 
 ## Шаг 4. nginx + HTTPS (Let's Encrypt)
 
-- [ ] Установить nginx + certbot (если ещё нет).
-- [ ] Virtual host: `<поддомен>` → `proxy_pass http://127.0.0.1:3000`.
-- [ ] Заголовки: `X-Forwarded-For`, `X-Forwarded-Proto` (rate limit логина берёт IP из `x-forwarded-for`).
-- [ ] Certbot: `certbot --nginx -d <поддомен>` → авто-renew.
-- [ ] Firewall: открыть 80/443, **закрыть прямой доступ к 3000** снаружи (опционально, но желательно).
-- [ ] Cookie `secure` — проверить, что сессия работает по HTTPS (httpOnly cookie без Secure ok, но HTTPS уже есть).
+- [ ] nginx + certbot.
+- [ ] Virtual host `qnabot.catandsnake.ru` → `proxy_pass http://127.0.0.1:3000`.
+- [ ] Заголовки: `X-Forwarded-For`, `X-Forwarded-Proto`.
+- [ ] Certbot: `certbot --nginx -d qnabot.catandsnake.ru`.
+- [ ] Firewall: 80/443 открыты, **3000 закрыт снаружи**.
+- [ ] Проверка:
+  ```
+  curl http://127.0.0.1:3000/admin/login
+  curl https://qnabot.catandsnake.ru/admin/login
+  sudo certbot renew --dry-run
+  ```
 
-**Критерий:** `https://<поддомен>/admin/login` открывается, сертификат валиден.
+**Критерий:** HTTPS работает, renew dry-run OK, сессия админки жива.
 
 ---
 
@@ -66,12 +119,12 @@
 
 | # | Проверка | Ожидание |
 |---|---|---|
-| 1 | Написать prod-боту `@VibeCodingFAQBot` известный вопрос | Ответ из базы знаний |
-| 2 | Написать вопрос без ответа | «Не нашёл» + кнопка преподавателя |
-| 3 | `https://<поддомен>/admin/login`, prod-пароль | Redirect на `/admin/qna` |
-| 4 | Правка одной записи FAQ | Toast успех |
+| 1 | Prod-бот `@VibeCodingFAQBot`, известный вопрос | Ответ из базы |
+| 2 | Вопрос без ответа | «Не нашёл» + кнопка |
+| 3 | `https://qnabot.catandsnake.ru/admin/login` | Redirect на `/admin/qna` |
+| 4 | Правка FAQ | Toast успех |
 | 5 | `/admin/log` | Обращения видны |
-| 6 | Rate limit бота (4+ вопроса/мин) | Сообщение о лимите |
+| 6 | Rate limit (4+ вопроса/мин) | Сообщение о лимите |
 
 **Критерий:** все 6 OK → закрыть backlog «Первый реальный запуск production».
 
@@ -79,10 +132,9 @@
 
 ## Шаг 6. Доступ преподавателя
 
-- [ ] Передать URL: `https://<поддомен>/admin/qna`.
-- [ ] Prod-пароль — по защищённому каналу (не в чат с ботом).
-- [ ] Мини-инструкция: «База знаний» / «Журнал», добавление пары, неотвеченные.
-- [ ] Принятый риск: один пароль на двоих (`threat-model.md`).
+- [ ] URL: `https://qnabot.catandsnake.ru/admin/qna`.
+- [ ] Prod-пароль — защищённый канал.
+- [ ] Мини-инструкция по админке.
 
 **Критерий:** преподаватель сам зашёл и отредактировал запись.
 
@@ -92,24 +144,23 @@
 
 - [ ] Раз в неделю — `/admin/log` (verdict=`error`).
 - [ ] `npm audit` при обновлении зависимостей.
-- [ ] Off-site бэкап Timeweb S3 — параллельно (backlog P1.5).
-- [ ] Runbook деплоя в README: `git pull` → `npm install` → `npm run build` → `systemctl restart qnabotai`.
-
-**Критерий:** runbook записан, certbot renew проверен (`certbot renew --dry-run`).
+- [ ] Off-site бэкап Timeweb S3 (backlog P1.5).
+- [ ] Runbook в README: `git pull` → `npm ci` → `npm run build` → `systemctl restart qnabotai`.
 
 ---
 
-## Не входит в этот заход
+## Желательно (не блокер пилота)
 
-- Перенос apex-домена или смена DNS-провайдера.
-- Разделение `logs.db` по окружениям (P3); dev после prod **не запускать параллельно**.
-- Multi-tenant, отдельные учётки (P2).
-- Threat model для SaaS (P2).
+- `/healthz` endpoint
+- logrotate для `journalctl` / app logs
+- systemd hardening (если не сделано в шаге 3)
+
+## После пилота
+
+- Timeweb S3 off-site, отдельный VPS, CI/CD, multi-admin, compiled server (без tsx)
 
 ---
 
 ## Порядок работы в чате
 
-Двигаемся **по одному шагу**: согласовали → выполнили → проверили → следующий.
-
-**Ожидает от владельца:** A-запись `qnabot.catandsnake.ru` → `82.21.92.121` (шаг 2; можно параллельно с шагом 1).
+Двигаемся **по одному шагу**. Сейчас: **шаг 0** (блокеры в коде).

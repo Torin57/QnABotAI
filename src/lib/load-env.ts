@@ -43,6 +43,8 @@ const REQUIRED_VARS = [
   "ADMIN_PASSWORD_HASH_BASE64",
   "SESSION_SECRET",
   "TEACHER_CONTACT_URL",
+  "DATABASE_PATH",
+  "QDRANT_COLLECTION",
 ] as const;
 
 /** Проверка обязательных переменных при старте server.ts. */

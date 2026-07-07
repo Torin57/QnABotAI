@@ -1,3 +1,4 @@
-import { loadEnv } from "./load-env";
+import { loadEnv, validateEnv } from "./load-env";
 
 loadEnv();
+validateEnv();
