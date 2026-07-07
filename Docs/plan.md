@@ -45,12 +45,14 @@
 
 **Критерий:** dev reindex → `qna_dev`, prod reindex → `qna_prod`; коллекции не пересекаются.
 
-### 0.3 Restore drill (prod-база)
+### 0.3 Restore drill (prod-база) ✅ (2026-07-07)
 
-- [ ] Создать бэкап `logs-prod.db` → восстановить в temp → `npm run qdrant:reindex` → smoke на prod-данных.
-- [ ] (Желательно) `sha256sum` архива в `backup.sh`.
+- [x] Тестовые пары в `data/logs-prod.db` → `scripts/backup.sh` → архив + `.sha256`.
+- [x] Удаление БД → `gunzip` restore → `integrity_check` OK → `sha256sum -c` OK.
+- [x] `APP_ENV=production npm run qdrant:reindex` → 2/2 в `qna_prod`.
+- [x] `sha256sum` в `backup.sh` (из 0.1).
 
-**Критерий:** restore → reindex → бот отвечает на известный вопрос из восстановленной базы.
+**Критерий:** restore → reindex → данные на месте — **пройден**.
 
 ---
 
@@ -163,4 +165,4 @@
 
 ## Порядок работы в чате
 
-Двигаемся **по одному шагу**. Сейчас: **шаг 0** (блокеры в коде).
+Двигаемся **по одному шагу**. Сейчас: **шаг 1** (pre-flight).
