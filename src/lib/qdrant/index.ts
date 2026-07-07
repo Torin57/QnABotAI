@@ -48,6 +48,7 @@ export async function upsertQnaItem(item: {
   question: string;
   answer: string | null;
 }): Promise<void> {
+  await ensureCollection();
   const vector = await embedText(item.question);
   await qdrant.upsert(COLLECTION, {
     points: [
