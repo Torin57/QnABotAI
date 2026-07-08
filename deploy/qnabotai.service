@@ -1,0 +1,22 @@
+[Unit]
+Description=QnABotAI production (Telegram bot + Next.js admin)
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/workspace/QnABotAI
+Environment=NODE_ENV=production
+Environment=APP_ENV=production
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=5
+StartLimitBurst=5
+StartLimitIntervalSec=60
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

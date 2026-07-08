@@ -69,33 +69,33 @@
 
 ---
 
-## Шаг 2. DNS: поддомен → Hostkey VPS
+## Шаг 2. DNS: поддомен → Hostkey VPS ✅ (2026-07-08)
 
-- [ ] В панели **Timeweb Cloud → DNS**: **A-запись** `qnabot` → **`82.21.92.121`**.
-- [ ] Apex, www и `n8n` **не менять**.
-- [ ] Дождаться propagation.
+- [x] В панели **Timeweb Cloud → DNS**: **A-запись** `qnabot` → **`82.21.92.121`**.
+- [x] Apex, www и `n8n` **не менять**.
+- [x] Propagation: `qnabot.catandsnake.ru` → `82.21.92.121`.
 
-**Критерий:** `qnabot.catandsnake.ru` → `82.21.92.121`.
+**Критерий:** `qnabot.catandsnake.ru` → `82.21.92.121` — **пройден**.
 
 ---
 
-## Шаг 3. Первый запуск production + systemd
+## Шаг 3. Первый запуск production + systemd ✅ (2026-07-08)
 
-- [ ] Остановить dev-процесс.
-- [ ] `npm start` — приложение на `127.0.0.1:3000`.
-- [ ] **systemd unit** `qnabotai.service`:
+- [x] Остановить dev-процесс (вчера вручную; сейчас живых `dev`-процессов нет).
+- [x] `npm start` — приложение на `127.0.0.1:3000`.
+- [x] **systemd unit** `qnabotai.service`:
   - `Environment=NODE_ENV=production`, `Environment=APP_ENV=production`
   - `Restart=always`, `RestartSec=5`, `StartLimitBurst=5`, `StartLimitIntervalSec=60`
-  - (желательно) `NoNewPrivileges=yes`, `PrivateTmp=yes`
-- [ ] `systemctl enable --now qnabotai`
-- [ ] Проверка после рестарта:
+  - `NoNewPrivileges=yes`, `PrivateTmp=yes`
+- [x] `systemctl enable --now qnabotai`
+- [x] Проверка после рестарта:
   ```
   systemctl restart qnabotai
   systemctl status qnabotai
   journalctl -u qnabotai -n 50
   ```
 
-**Критерий:** `curl http://127.0.0.1:3000/admin/login` → 200/redirect; сервис переживает restart.
+**Критерий:** `curl http://127.0.0.1:3000/admin/login` → 200/redirect; сервис переживает restart — **пройден**.
 
 ---
 
@@ -165,4 +165,4 @@
 
 ## Порядок работы в чате
 
-Двигаемся **по одному шагу**. Сейчас: **шаг 2** (DNS).
+Двигаемся **по одному шагу**. Сейчас: **шаг 4** (nginx + HTTPS).
