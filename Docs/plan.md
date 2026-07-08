@@ -99,25 +99,25 @@
 
 ---
 
-## Шаг 4. nginx + HTTPS (Let's Encrypt)
+## Шаг 4. nginx + HTTPS (Let's Encrypt) ✅ (2026-07-08)
 
-- [ ] nginx + certbot.
-- [ ] Virtual host `qnabot.catandsnake.ru` → `proxy_pass http://127.0.0.1:3000`.
-- [ ] Заголовки: `X-Forwarded-For`, `X-Forwarded-Proto`.
-- [ ] Certbot: `certbot --nginx -d qnabot.catandsnake.ru`.
-- [ ] Firewall: 80/443 открыты, **3000 закрыт снаружи**.
-- [ ] Проверка:
+- [x] nginx + certbot.
+- [x] Virtual host `qnabot.catandsnake.ru` → `proxy_pass http://127.0.0.1:3000`.
+- [x] Заголовки: `X-Forwarded-For`, `X-Forwarded-Proto`.
+- [x] Certbot: `certbot --nginx -d qnabot.catandsnake.ru`.
+- [x] Firewall: 80/443 открыты, **3000 закрыт снаружи**.
+- [x] Проверка:
   ```
   curl http://127.0.0.1:3000/admin/login
   curl https://qnabot.catandsnake.ru/admin/login
   sudo certbot renew --dry-run
   ```
 
-**Критерий:** HTTPS работает, renew dry-run OK, сессия админки жива.
+**Критерий:** HTTPS работает, renew dry-run OK, сессия админки жива — **пройден**.
 
 ---
 
-## Шаг 5. Smoke-тест (владелец)
+## Шаг 5. Smoke-тест (владелец) ✅ (2026-07-08)
 
 | # | Проверка | Ожидание |
 |---|---|---|
@@ -128,7 +128,7 @@
 | 5 | `/admin/log` | Обращения видны |
 | 6 | Rate limit (4+ вопроса/мин) | Сообщение о лимите |
 
-**Критерий:** все 6 OK → закрыть backlog «Первый реальный запуск production».
+**Критерий:** все 6 OK → закрыть backlog «Первый реальный запуск production» — **пройден**.
 
 ---
 
@@ -165,4 +165,4 @@
 
 ## Порядок работы в чате
 
-Двигаемся **по одному шагу**. Сейчас: **шаг 4** (nginx + HTTPS).
+Двигаемся **по одному шагу**. Сейчас: **шаг 6** (доступ преподавателя).
