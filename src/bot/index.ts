@@ -4,17 +4,13 @@ import { qnaItems, botLog } from "@/db/schema";
 import { ensureCollection, searchQna, SearchResult } from "@/lib/qdrant";
 import { mistral } from "@/lib/mistral";
 import { createRateLimiter } from "@/lib/rate-limit";
+import { getJudgeSettings } from "@/lib/settings";
 
 // 3 вопроса в минуту на чат; счётчик только в памяти (chat_id не сохраняется)
 const messageRateLimiter = createRateLimiter({
   limit: 3,
   windowMs: 60 * 1000,
 });
-
-const JUDGE_PROMPT = `Ты — ассистент выбора ответа из базы знаний.
-Тебе даны вопрос пользователя и список кандидатов из базы знаний.
-Выбери кандидата, чей вопрос точно отвечает на вопрос пользователя.
-Верни ТОЛЬКО числовой ID кандидата. Если ни один не подходит — верни слово NULL.`;
 
 async function judgeAnswer(
   userQuestion: string,
@@ -24,10 +20,14 @@ async function judgeAnswer(
     .map((c) => `ID ${c.id}: "${c.question}"`)
     .join("\n");
 
+  const { model, temperature, prompt } = await getJudgeSettings();
+  console.log("[bot] judge settings:", { model, temperature, promptLen: prompt.length });
+
   const response = await mistral.chat.complete({
-    model: "mistral-small-latest",
+    model,
+    temperature,
     messages: [
-      { role: "system", content: JUDGE_PROMPT },
+      { role: "system", content: prompt },
       {
         role: "user",
         content: `Вопрос пользователя: "${userQuestion}"\n\nКандидаты:\n${candidatesList}`,

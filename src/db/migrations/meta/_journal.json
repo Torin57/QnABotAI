@@ -22,6 +22,20 @@
       "when": 1783262686168,
       "tag": "0002_rapid_piledriver",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1783615133445,
+      "tag": "0003_naive_paper_doll",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1783616056446,
+      "tag": "0004_odd_vector",
+      "breakpoints": true
     }
   ]
 }

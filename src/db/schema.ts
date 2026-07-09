@@ -1,4 +1,4 @@
-import { int, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { int, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const qnaItems = sqliteTable("qna_items", {
   id: int("id").primaryKey({ autoIncrement: true }),
@@ -26,6 +26,22 @@ export const botLog = sqliteTable("bot_log", {
   /** Текст ошибки обработки (только для verdict="error"), без stack trace. */
   error: text("error"),
   createdAt: int("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+/**
+ * Настройки приложения (одна строка, id=1).
+ * Модель/температура/промпт «Судьи» — в БД, чтобы менять из админки без правки .env.
+ * API-ключ Mistral по-прежнему только в .env.
+ */
+export const appSettings = sqliteTable("app_settings", {
+  id: int("id").primaryKey(),
+  judgeModel: text("judge_model").notNull().default("mistral-small-latest"),
+  judgeTemperature: real("judge_temperature").notNull().default(0),
+  /** Системный промпт «Судьи»; пусто/NULL → дефолт из кода (`DEFAULT_JUDGE_PROMPT`). */
+  judgePrompt: text("judge_prompt"),
+  updatedAt: int("updated_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
 });

@@ -1,0 +1,1 @@
+ALTER TABLE `app_settings` ADD `judge_prompt` text;
