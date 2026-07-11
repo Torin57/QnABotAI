@@ -32,8 +32,8 @@ export const botLog = sqliteTable("bot_log", {
 
 /**
  * Настройки приложения (одна строка, id=1).
- * Модель/температура/промпт «Судьи» — в БД, чтобы менять из админки без правки .env.
- * API-ключ Mistral по-прежнему только в .env.
+ * Модель/температура/промпт «Судьи» и ссылка «Связаться с преподавателем» — в БД,
+ * чтобы менять из админки без правки .env. API-ключ Mistral по-прежнему только в .env.
  */
 export const appSettings = sqliteTable("app_settings", {
   id: int("id").primaryKey(),
@@ -41,6 +41,11 @@ export const appSettings = sqliteTable("app_settings", {
   judgeTemperature: real("judge_temperature").notNull().default(0),
   /** Системный промпт «Судьи»; пусто/NULL → дефолт из кода (`DEFAULT_JUDGE_PROMPT`). */
   judgePrompt: text("judge_prompt"),
+  /**
+   * Ссылка для Inline-кнопки «Связаться с преподавателем».
+   * NULL/пусто → fallback на `TEACHER_CONTACT_URL` из `.env`.
+   */
+  teacherContactUrl: text("teacher_contact_url"),
   updatedAt: int("updated_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),

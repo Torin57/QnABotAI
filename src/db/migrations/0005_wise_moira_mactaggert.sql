@@ -1,0 +1,1 @@
+ALTER TABLE `app_settings` ADD `teacher_contact_url` text;

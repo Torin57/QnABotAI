@@ -82,3 +82,51 @@ export async function setJudgeSettings(input: {
 
   return { model, temperature, prompt };
 }
+
+/** Fallback из `.env` (обязателен при старте); в UI можно переопределить. */
+export function getEnvTeacherContactUrl(): string {
+  return (process.env.TEACHER_CONTACT_URL || "").trim();
+}
+
+/**
+ * Эффективная ссылка для кнопки «Связаться с преподавателем»:
+ * значение из `app_settings`, иначе `TEACHER_CONTACT_URL` из `.env`.
+ */
+export async function getTeacherContactUrl(): Promise<string> {
+  const row = await db.query.appSettings.findFirst({
+    where: eq(appSettings.id, SETTINGS_ROW_ID),
+  });
+
+  const fromDb =
+    typeof row?.teacherContactUrl === "string" ? row.teacherContactUrl.trim() : "";
+  if (fromDb) return fromDb;
+
+  const fromEnv = getEnvTeacherContactUrl();
+  if (fromEnv) return fromEnv;
+
+  throw new Error("Не задана ссылка «Связаться с преподавателем»");
+}
+
+export async function setTeacherContactUrl(url: string): Promise<string> {
+  const teacherContactUrl = url.trim();
+  const now = new Date();
+
+  const existing = await db.query.appSettings.findFirst({
+    where: eq(appSettings.id, SETTINGS_ROW_ID),
+  });
+
+  if (existing) {
+    await db
+      .update(appSettings)
+      .set({ teacherContactUrl, updatedAt: now })
+      .where(eq(appSettings.id, SETTINGS_ROW_ID));
+  } else {
+    await db.insert(appSettings).values({
+      id: SETTINGS_ROW_ID,
+      teacherContactUrl,
+      updatedAt: now,
+    });
+  }
+
+  return teacherContactUrl;
+}

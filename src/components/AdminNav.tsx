@@ -25,7 +25,9 @@ export function AdminNav() {
   const [model, setModel] = useState("");
   const [temperature, setTemperature] = useState("0");
   const [prompt, setPrompt] = useState("");
+  const [teacherContactUrl, setTeacherContactUrl] = useState("");
   const [defaults, setDefaults] = useState<JudgeDefaults | null>(null);
+  const [contactDefaultFromEnv, setContactDefaultFromEnv] = useState("");
   const [loadingSettings, setLoadingSettings] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -41,29 +43,40 @@ export function AdminNav() {
     (async () => {
       setLoadingSettings(true);
       try {
-        const res = await fetch("/api/settings/judge", { cache: "no-store" });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Не удалось загрузить настройки");
+        const [judgeRes, contactRes] = await Promise.all([
+          fetch("/api/settings/judge", { cache: "no-store" }),
+          fetch("/api/settings/contact", { cache: "no-store" }),
+        ]);
+        const judgeData = await judgeRes.json();
+        const contactData = await contactRes.json();
+        if (!judgeRes.ok) throw new Error(judgeData.error || "Не удалось загрузить настройки «Судьи»");
+        if (!contactRes.ok) {
+          throw new Error(contactData.error || "Не удалось загрузить ссылку контакта");
+        }
         if (!cancelled) {
-          setModel(typeof data.model === "string" ? data.model : "mistral-small-latest");
+          setModel(typeof judgeData.model === "string" ? judgeData.model : "mistral-small-latest");
           setTemperature(
-            typeof data.temperature === "number" ? String(data.temperature) : "0"
+            typeof judgeData.temperature === "number" ? String(judgeData.temperature) : "0"
           );
-          setPrompt(typeof data.prompt === "string" ? data.prompt : "");
-          if (data.defaults && typeof data.defaults === "object") {
+          setPrompt(typeof judgeData.prompt === "string" ? judgeData.prompt : "");
+          if (judgeData.defaults && typeof judgeData.defaults === "object") {
             setDefaults({
               model:
-                typeof data.defaults.model === "string"
-                  ? data.defaults.model
+                typeof judgeData.defaults.model === "string"
+                  ? judgeData.defaults.model
                   : "mistral-small-latest",
               temperature:
-                typeof data.defaults.temperature === "number"
-                  ? data.defaults.temperature
+                typeof judgeData.defaults.temperature === "number"
+                  ? judgeData.defaults.temperature
                   : 0,
               prompt:
-                typeof data.defaults.prompt === "string" ? data.defaults.prompt : "",
+                typeof judgeData.defaults.prompt === "string" ? judgeData.defaults.prompt : "",
             });
           }
+          setTeacherContactUrl(typeof contactData.url === "string" ? contactData.url : "");
+          setContactDefaultFromEnv(
+            typeof contactData.defaultFromEnv === "string" ? contactData.defaultFromEnv : ""
+          );
         }
       } catch (err) {
         console.error("[AdminNav] settings load ERROR", err);
@@ -90,15 +103,20 @@ export function AdminNav() {
   }, [settingsOpen, saving]);
 
   function resetToDefaults() {
-    if (!defaults) return;
-    setModel(defaults.model);
-    setTemperature(String(defaults.temperature));
-    setPrompt(defaults.prompt);
+    if (defaults) {
+      setModel(defaults.model);
+      setTemperature(String(defaults.temperature));
+      setPrompt(defaults.prompt);
+    }
+    if (contactDefaultFromEnv) {
+      setTeacherContactUrl(contactDefaultFromEnv);
+    }
   }
 
   async function saveSettings() {
     const trimmedModel = model.trim();
     const trimmedPrompt = prompt.trim();
+    const trimmedContact = teacherContactUrl.trim();
     const temp = Number(temperature.replace(",", "."));
     if (!trimmedModel) {
       toast.error("Укажите имя модели");
@@ -112,21 +130,34 @@ export function AdminNav() {
       toast.error("Системный промпт не может быть пустым");
       return;
     }
+    if (!trimmedContact) {
+      toast.error("Укажите ссылку «Связаться с преподавателем»");
+      return;
+    }
 
     setSaving(true);
     try {
-      const res = await fetch("/api/settings/judge", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: trimmedModel,
-          temperature: temp,
-          prompt: trimmedPrompt,
+      const [judgeRes, contactRes] = await Promise.all([
+        fetch("/api/settings/judge", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: trimmedModel,
+            temperature: temp,
+            prompt: trimmedPrompt,
+          }),
         }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Не удалось сохранить");
-      toast.success("Настройки «Судьи» сохранены");
+        fetch("/api/settings/contact", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: trimmedContact }),
+        }),
+      ]);
+      const judgeData = await judgeRes.json();
+      const contactData = await contactRes.json();
+      if (!judgeRes.ok) throw new Error(judgeData.error || "Не удалось сохранить настройки «Судьи»");
+      if (!contactRes.ok) throw new Error(contactData.error || "Не удалось сохранить ссылку контакта");
+      toast.success("Настройки сохранены");
       setSettingsOpen(false);
     } catch (err) {
       console.error("[AdminNav] settings save ERROR", err);
@@ -178,12 +209,12 @@ export function AdminNav() {
           <div
             role="dialog"
             aria-modal="true"
-            aria-labelledby="judge-settings-title"
+            aria-labelledby="settings-title"
             className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto bg-white rounded-xl shadow-xl border border-slate-200"
           >
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 sticky top-0 bg-white z-10">
-              <h2 id="judge-settings-title" className="text-base font-semibold text-slate-900">
-                Настройки «Судьи»
+              <h2 id="settings-title" className="text-base font-semibold text-slate-900">
+                Настройки
               </h2>
               <button
                 type="button"
@@ -208,6 +239,9 @@ export function AdminNav() {
                 </div>
               ) : (
                 <>
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                    Судья
+                  </p>
                   <div>
                     <label htmlFor="judge-model" className="block text-sm font-medium text-slate-700 mb-1.5">
                       Модель
@@ -259,6 +293,31 @@ export function AdminNav() {
                   <p className="text-xs text-slate-400">
                     API-ключ Mistral задаётся на сервере (.env), не в этой форме.
                   </p>
+
+                  <div className="border-t border-slate-200 pt-4 space-y-4">
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                      Контакт преподавателя
+                    </p>
+                    <div>
+                      <label
+                        htmlFor="teacher-contact-url"
+                        className="block text-sm font-medium text-slate-700 mb-1.5"
+                      >
+                        Ссылка «Связаться с преподавателем»
+                      </label>
+                      <input
+                        id="teacher-contact-url"
+                        type="url"
+                        value={teacherContactUrl}
+                        onChange={(e) => setTeacherContactUrl(e.target.value)}
+                        placeholder="https://t.me/username"
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                      />
+                      <p className="mt-1.5 text-xs text-slate-400">
+                        Кнопка в боте, когда ответ не найден. Обычно ссылка на Telegram.
+                      </p>
+                    </div>
+                  </div>
                 </>
               )}
             </div>
@@ -267,7 +326,7 @@ export function AdminNav() {
               <button
                 type="button"
                 onClick={resetToDefaults}
-                disabled={!defaults || saving || loadingSettings}
+                disabled={(!defaults && !contactDefaultFromEnv) || saving || loadingSettings}
                 className="px-3.5 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-60"
               >
                 Сбросить к умолчанию

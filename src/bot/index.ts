@@ -4,7 +4,7 @@ import { qnaItems, botLog } from "@/db/schema";
 import { ensureCollection, searchQna, SearchResult } from "@/lib/qdrant";
 import { mistral } from "@/lib/mistral";
 import { createRateLimiter } from "@/lib/rate-limit";
-import { getJudgeSettings } from "@/lib/settings";
+import { getJudgeSettings, getTeacherContactUrl } from "@/lib/settings";
 
 // 3 вопроса в минуту на чат; счётчик только в памяти (chat_id не сохраняется)
 const messageRateLimiter = createRateLimiter({
@@ -109,7 +109,7 @@ export function createBot() {
 
         await ctx.reply(
           "Не нашёл ответа на ваш вопрос.",
-          contactKeyboard()
+          await contactKeyboard()
         );
 
         return;
@@ -129,7 +129,7 @@ export function createBot() {
 
         await ctx.reply(
           "Не нашёл подходящего ответа в базе знаний.",
-          contactKeyboard()
+          await contactKeyboard()
         );
 
         return;
@@ -147,7 +147,7 @@ export function createBot() {
 
         await ctx.reply(
           "Не нашёл ответа.",
-          contactKeyboard()
+          await contactKeyboard()
         );
 
         return;
@@ -209,12 +209,8 @@ async function logBotEvent(
   });
 }
 
-function contactKeyboard() {
-  const teacherContactUrl = process.env.TEACHER_CONTACT_URL;
-
-  if (!teacherContactUrl) {
-    throw new Error("Не задана переменная окружения TEACHER_CONTACT_URL");
-  }
+async function contactKeyboard() {
+  const teacherContactUrl = await getTeacherContactUrl();
 
   return {
     reply_markup: new InlineKeyboard().url(
