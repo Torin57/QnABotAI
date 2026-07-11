@@ -28,6 +28,11 @@ export function AdminNav() {
   const [teacherContactUrl, setTeacherContactUrl] = useState("");
   const [defaults, setDefaults] = useState<JudgeDefaults | null>(null);
   const [contactDefaultFromEnv, setContactDefaultFromEnv] = useState("");
+  const [botTokenInput, setBotTokenInput] = useState("");
+  const [botMaskedToken, setBotMaskedToken] = useState("");
+  const [botUsername, setBotUsername] = useState<string | null>(null);
+  const [botSource, setBotSource] = useState<"env" | "settings" | "">("");
+  const [botResetToEnv, setBotResetToEnv] = useState(false);
   const [loadingSettings, setLoadingSettings] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -43,16 +48,19 @@ export function AdminNav() {
     (async () => {
       setLoadingSettings(true);
       try {
-        const [judgeRes, contactRes] = await Promise.all([
+        const [judgeRes, contactRes, botRes] = await Promise.all([
           fetch("/api/settings/judge", { cache: "no-store" }),
           fetch("/api/settings/contact", { cache: "no-store" }),
+          fetch("/api/settings/bot", { cache: "no-store" }),
         ]);
         const judgeData = await judgeRes.json();
         const contactData = await contactRes.json();
+        const botData = await botRes.json();
         if (!judgeRes.ok) throw new Error(judgeData.error || "Не удалось загрузить настройки «Судьи»");
         if (!contactRes.ok) {
           throw new Error(contactData.error || "Не удалось загрузить ссылку контакта");
         }
+        if (!botRes.ok) throw new Error(botData.error || "Не удалось загрузить настройки бота");
         if (!cancelled) {
           setModel(typeof judgeData.model === "string" ? judgeData.model : "mistral-small-latest");
           setTemperature(
@@ -77,6 +85,11 @@ export function AdminNav() {
           setContactDefaultFromEnv(
             typeof contactData.defaultFromEnv === "string" ? contactData.defaultFromEnv : ""
           );
+          setBotMaskedToken(typeof botData.maskedToken === "string" ? botData.maskedToken : "");
+          setBotUsername(typeof botData.username === "string" ? botData.username : null);
+          setBotSource(botData.source === "settings" || botData.source === "env" ? botData.source : "");
+          setBotTokenInput("");
+          setBotResetToEnv(false);
         }
       } catch (err) {
         console.error("[AdminNav] settings load ERROR", err);
@@ -111,12 +124,15 @@ export function AdminNav() {
     if (contactDefaultFromEnv) {
       setTeacherContactUrl(contactDefaultFromEnv);
     }
+    setBotTokenInput("");
+    setBotResetToEnv(true);
   }
 
   async function saveSettings() {
     const trimmedModel = model.trim();
     const trimmedPrompt = prompt.trim();
     const trimmedContact = teacherContactUrl.trim();
+    const trimmedBotToken = botTokenInput.trim();
     const temp = Number(temperature.replace(",", "."));
     if (!trimmedModel) {
       toast.error("Укажите имя модели");
@@ -157,6 +173,25 @@ export function AdminNav() {
       const contactData = await contactRes.json();
       if (!judgeRes.ok) throw new Error(judgeData.error || "Не удалось сохранить настройки «Судьи»");
       if (!contactRes.ok) throw new Error(contactData.error || "Не удалось сохранить ссылку контакта");
+
+      if (trimmedBotToken) {
+        const botRes = await fetch("/api/settings/bot", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: trimmedBotToken }),
+        });
+        const botData = await botRes.json();
+        if (!botRes.ok) throw new Error(botData.error || "Не удалось сохранить токен бота");
+      } else if (botResetToEnv) {
+        const botRes = await fetch("/api/settings/bot", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ resetToEnv: true }),
+        });
+        const botData = await botRes.json();
+        if (!botRes.ok) throw new Error(botData.error || "Не удалось сбросить токен бота");
+      }
+
       toast.success("Настройки сохранены");
       setSettingsOpen(false);
     } catch (err) {
@@ -166,6 +201,9 @@ export function AdminNav() {
       setSaving(false);
     }
   }
+
+  const botSourceLabel =
+    botSource === "settings" ? "из настроек" : botSource === "env" ? "из .env сервера" : "";
 
   return (
     <>
@@ -315,6 +353,57 @@ export function AdminNav() {
                       />
                       <p className="mt-1.5 text-xs text-slate-400">
                         Кнопка в боте, когда ответ не найден. Обычно ссылка на Telegram.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-slate-200 pt-4 space-y-4">
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                      Telegram-бот
+                    </p>
+                    <div className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2.5 text-sm text-slate-600">
+                      {botUsername ? (
+                        <span>
+                          Сейчас:{" "}
+                          <span className="font-medium text-slate-900">@{botUsername}</span>
+                          {botSourceLabel ? (
+                            <span className="text-slate-400"> · {botSourceLabel}</span>
+                          ) : null}
+                        </span>
+                      ) : (
+                        <span>Текущий токен: {botMaskedToken || "не определён"}</span>
+                      )}
+                      {botMaskedToken ? (
+                        <div className="mt-1 font-mono text-xs text-slate-400">{botMaskedToken}</div>
+                      ) : null}
+                      {botResetToEnv ? (
+                        <div className="mt-1.5 text-xs text-amber-700">
+                          После сохранения вернётся токен из .env сервера
+                        </div>
+                      ) : null}
+                    </div>
+                    <div>
+                      <label
+                        htmlFor="tg-bot-token"
+                        className="block text-sm font-medium text-slate-700 mb-1.5"
+                      >
+                        Новый токен
+                      </label>
+                      <input
+                        id="tg-bot-token"
+                        type="password"
+                        autoComplete="off"
+                        value={botTokenInput}
+                        onChange={(e) => {
+                          setBotTokenInput(e.target.value);
+                          if (e.target.value.trim()) setBotResetToEnv(false);
+                        }}
+                        placeholder="Оставьте пустым, чтобы не менять"
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                      />
+                      <p className="mt-1.5 text-xs text-slate-400">
+                        Создайте бота у @BotFather и вставьте токен. Проверяется через Telegram до
+                        сохранения; polling перезапускается сразу.
                       </p>
                     </div>
                   </div>
