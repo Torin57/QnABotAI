@@ -21,7 +21,14 @@ export const botLog = sqliteTable("bot_log", {
   candidates: text("candidates", { mode: "json" }).$type<
     { id: number; question: string; score: number }[]
   >(),
-  verdict: text("verdict", { enum: ["answered", "null", "error"] }).notNull(),
+  /**
+   * `answered` / `null` — вердикт «Судьи»;
+   * `error` — сбой обработки;
+   * `not_helpful` — ученик нажал «Это не помогло» под выданным ответом.
+   */
+  verdict: text("verdict", {
+    enum: ["answered", "null", "error", "not_helpful"],
+  }).notNull(),
   answer: text("answer"),
   /** Текст ошибки обработки (только для verdict="error"), без stack trace. */
   error: text("error"),
@@ -46,6 +53,12 @@ export const appSettings = sqliteTable("app_settings", {
    * NULL/пусто → fallback на `TEACHER_CONTACT_URL` из `.env`.
    */
   teacherContactUrl: text("teacher_contact_url"),
+  /**
+   * Токен Telegram-бота.
+   * NULL/пусто → fallback на `TG_BOT_TOKEN` из `.env`.
+   * Секрет: в API отдаём только маску, не полное значение.
+   */
+  tgBotToken: text("tg_bot_token"),
   updatedAt: int("updated_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),

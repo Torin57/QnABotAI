@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-type Verdict = "answered" | "null" | "error";
+type Verdict = "answered" | "null" | "error" | "not_helpful";
 
 interface LogCandidate {
   id: number;
@@ -25,18 +25,21 @@ const VERDICT_LABEL: Record<Verdict, string> = {
   answered: "Отвечен",
   null: "Не найден",
   error: "Ошибка",
+  not_helpful: "Не помогло",
 };
 
 const VERDICT_CLASS: Record<Verdict, string> = {
   answered: "bg-emerald-50 text-emerald-700 ring-emerald-200",
   null: "bg-amber-50 text-amber-700 ring-amber-200",
   error: "bg-red-50 text-red-700 ring-red-200",
+  not_helpful: "bg-orange-50 text-orange-700 ring-orange-200",
 };
 
 const VERDICT_DOT: Record<Verdict, string> = {
   answered: "bg-emerald-500",
   null: "bg-amber-500",
   error: "bg-red-500",
+  not_helpful: "bg-orange-500",
 };
 
 function formatScore(score: number): string {
@@ -45,7 +48,13 @@ function formatScore(score: number): string {
 
 /** Выбранный кандидат: совпадение снапшота выданного ответа с актуальным ответом из базы. */
 function isChosenCandidate(entry: LogEntry, candidate: LogCandidate): boolean {
-  if (entry.verdict !== "answered" || !entry.answer || !candidate.answer) return false;
+  if (
+    (entry.verdict !== "answered" && entry.verdict !== "not_helpful") ||
+    !entry.answer ||
+    !candidate.answer
+  ) {
+    return false;
+  }
   return entry.answer.trim() === candidate.answer.trim();
 }
 

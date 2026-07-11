@@ -1,0 +1,1 @@
+ALTER TABLE `app_settings` ADD `tg_bot_token` text;

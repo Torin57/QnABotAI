@@ -130,3 +130,77 @@ export async function setTeacherContactUrl(url: string): Promise<string> {
 
   return teacherContactUrl;
 }
+
+/** Fallback из `.env` (обязателен при старте); в UI можно переопределить. */
+export function getEnvTgBotToken(): string {
+  return (process.env.TG_BOT_TOKEN || "").trim();
+}
+
+export function maskTgBotToken(token: string): string {
+  const trimmed = token.trim();
+  const parts = trimmed.split(":");
+  if (parts.length < 2) return "***";
+  const [idPart, secret] = parts;
+  const idMask =
+    idPart.length <= 4 ? idPart : `${idPart.slice(0, 4)}…`;
+  const secretTail = secret.slice(-4);
+  return `${idMask}:…${secretTail}`;
+}
+
+/**
+ * Эффективный токен бота: `app_settings.tg_bot_token`, иначе `TG_BOT_TOKEN` из `.env`.
+ */
+export async function getTgBotToken(): Promise<{
+  token: string;
+  source: "settings" | "env";
+}> {
+  const row = await db.query.appSettings.findFirst({
+    where: eq(appSettings.id, SETTINGS_ROW_ID),
+  });
+
+  const fromDb =
+    typeof row?.tgBotToken === "string" ? row.tgBotToken.trim() : "";
+  if (fromDb) return { token: fromDb, source: "settings" };
+
+  const fromEnv = getEnvTgBotToken();
+  if (fromEnv) return { token: fromEnv, source: "env" };
+
+  throw new Error("Не задан токен Telegram-бота");
+}
+
+export async function setTgBotToken(token: string): Promise<void> {
+  const tgBotToken = token.trim();
+  const now = new Date();
+
+  const existing = await db.query.appSettings.findFirst({
+    where: eq(appSettings.id, SETTINGS_ROW_ID),
+  });
+
+  if (existing) {
+    await db
+      .update(appSettings)
+      .set({ tgBotToken, updatedAt: now })
+      .where(eq(appSettings.id, SETTINGS_ROW_ID));
+  } else {
+    await db.insert(appSettings).values({
+      id: SETTINGS_ROW_ID,
+      tgBotToken,
+      updatedAt: now,
+    });
+  }
+}
+
+/** Очистить токен в БД → снова используется `TG_BOT_TOKEN` из `.env`. */
+export async function clearTgBotToken(): Promise<void> {
+  const now = new Date();
+  const existing = await db.query.appSettings.findFirst({
+    where: eq(appSettings.id, SETTINGS_ROW_ID),
+  });
+
+  if (!existing) return;
+
+  await db
+    .update(appSettings)
+    .set({ tgBotToken: null, updatedAt: now })
+    .where(eq(appSettings.id, SETTINGS_ROW_ID));
+}

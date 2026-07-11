@@ -1,16 +1,19 @@
 import { Bot, InlineKeyboard } from "grammy";
+import { eq, and } from "drizzle-orm";
 import { db } from "@/db";
 import { qnaItems, botLog } from "@/db/schema";
 import { ensureCollection, searchQna, SearchResult } from "@/lib/qdrant";
 import { mistral } from "@/lib/mistral";
 import { createRateLimiter } from "@/lib/rate-limit";
-import { getJudgeSettings, getTeacherContactUrl } from "@/lib/settings";
+import { getJudgeSettings, getTeacherContactUrl, getTgBotToken } from "@/lib/settings";
 
 // 3 вопроса в минуту на чат; счётчик только в памяти (chat_id не сохраняется)
 const messageRateLimiter = createRateLimiter({
   limit: 3,
   windowMs: 60 * 1000,
 });
+
+const NOT_HELPFUL_PREFIX = "nh:";
 
 async function judgeAnswer(
   userQuestion: string,
@@ -48,9 +51,7 @@ async function judgeAnswer(
   return isNaN(id) ? null : id;
 }
 
-export function createBot() {
-  const token = process.env.TG_BOT_TOKEN;
-
+export function createBot(token: string) {
   if (!token) {
     throw new Error("TG_BOT_TOKEN is not set");
   }
@@ -73,6 +74,73 @@ export function createBot() {
     await ctx.reply(
       "Привет! Задайте вопрос, и я постараюсь найти ответ в базе знаний."
     );
+  });
+
+  bot.on("callback_query:data", async (ctx) => {
+    const data = ctx.callbackQuery.data;
+    if (!data.startsWith(NOT_HELPFUL_PREFIX)) {
+      await ctx.answerCallbackQuery();
+      return;
+    }
+
+    const logId = parseInt(data.slice(NOT_HELPFUL_PREFIX.length), 10);
+    if (!Number.isFinite(logId)) {
+      await ctx.answerCallbackQuery({ text: "Некорректная кнопка" });
+      return;
+    }
+
+    console.log("[bot] not_helpful callback for log id:", logId);
+
+    try {
+      const original = await db.query.botLog.findFirst({
+        where: eq(botLog.id, logId),
+      });
+
+      if (!original || original.verdict !== "answered") {
+        await ctx.answerCallbackQuery({ text: "Запись не найдена" });
+        return;
+      }
+
+      const already = await db.query.botLog.findFirst({
+        where: and(
+          eq(botLog.verdict, "not_helpful"),
+          eq(botLog.question, original.question),
+          eq(botLog.answer, original.answer ?? "")
+        ),
+      });
+
+      if (already) {
+        await ctx.answerCallbackQuery({ text: "Уже отмечено" });
+        try {
+          await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } });
+        } catch {
+          // сообщение могло быть уже без клавиатуры
+        }
+        return;
+      }
+
+      await logUnanswered(original.question);
+      await db.insert(botLog).values({
+        question: original.question,
+        candidates: original.candidates,
+        verdict: "not_helpful",
+        answer: original.answer,
+      });
+
+      await ctx.answerCallbackQuery({ text: "Передали преподавателю" });
+
+      try {
+        await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } });
+      } catch {
+        // ignore
+      }
+
+      await ctx.reply("Спасибо, передали вопрос преподавателю.");
+      console.log("[bot] not_helpful recorded for question:", original.question);
+    } catch (err) {
+      console.error("[bot] error handling not_helpful:", err);
+      await ctx.answerCallbackQuery({ text: "Ошибка, попробуйте позже" });
+    }
   });
 
   bot.on("message:text", async (ctx) => {
@@ -155,8 +223,14 @@ export function createBot() {
 
       console.log("[bot] sending answer:", chosen.answer);
 
-      await ctx.reply(chosen.answer);
-      await logBotEvent(userQuestion, candidates, "answered", chosen.answer);
+      const logId = await logBotEvent(
+        userQuestion,
+        candidates,
+        "answered",
+        chosen.answer
+      );
+
+      await ctx.reply(chosen.answer, notHelpfulKeyboard(logId));
 
       console.log("[bot] answer sent successfully");
     } catch (err) {
@@ -200,13 +274,31 @@ async function logBotEvent(
   candidates: SearchResult[],
   verdict: "answered" | "null",
   answer: string | null
-) {
-  await db.insert(botLog).values({
-    question: questionText,
-    candidates: candidates.map((c) => ({ id: c.id, question: c.question, score: c.score })),
-    verdict,
-    answer,
-  });
+): Promise<number> {
+  const [row] = await db
+    .insert(botLog)
+    .values({
+      question: questionText,
+      candidates: candidates.map((c) => ({
+        id: c.id,
+        question: c.question,
+        score: c.score,
+      })),
+      verdict,
+      answer,
+    })
+    .returning({ id: botLog.id });
+
+  return row.id;
+}
+
+function notHelpfulKeyboard(logId: number) {
+  return {
+    reply_markup: new InlineKeyboard().text(
+      "Это не помогло",
+      `${NOT_HELPFUL_PREFIX}${logId}`
+    ),
+  };
 }
 
 async function contactKeyboard() {
@@ -220,21 +312,61 @@ async function contactKeyboard() {
   };
 }
 
-export async function startBot() {
-  console.log("[bot] ensuring Qdrant collection...");
+type BotGlobals = typeof globalThis & {
+  __qnabotInstance?: Bot;
+  __qnabotRestartChain?: Promise<void>;
+};
 
-  await ensureCollection();
-
-  console.log("[bot] creating bot instance...");
-
-  const bot = createBot();
-
-  console.log("[bot] starting polling...");
-
-  bot.start();
-
-  console.log("[bot] started");
-
-  return bot;
+function getRunningBot(): Bot | undefined {
+  return (globalThis as BotGlobals).__qnabotInstance;
 }
 
+function setRunningBot(bot: Bot | undefined) {
+  (globalThis as BotGlobals).__qnabotInstance = bot;
+}
+
+/**
+ * Остановить текущий polling (если есть) и запустить бота с новым токеном.
+ * Экземпляр на `globalThis`, чтобы API-роут Next.js видел тот же бот, что и server.ts.
+ */
+export async function restartBot(token: string): Promise<void> {
+  const g = globalThis as BotGlobals;
+  const run = async () => {
+    const prev = getRunningBot();
+    if (prev) {
+      console.log("[bot] stopping previous instance...");
+      try {
+        await prev.stop();
+      } catch (err) {
+        console.error("[bot] stop error:", err);
+      }
+      setRunningBot(undefined);
+    }
+
+    console.log("[bot] creating bot instance...");
+    const bot = createBot(token);
+    setRunningBot(bot);
+
+    console.log("[bot] starting polling...");
+    void bot.start().catch((err) => {
+      console.error("[bot] polling crashed:", err);
+    });
+    console.log("[bot] started");
+  };
+
+  const chain = (g.__qnabotRestartChain ?? Promise.resolve())
+    .catch(() => undefined)
+    .then(run);
+  g.__qnabotRestartChain = chain;
+  await chain;
+}
+
+export async function startBot() {
+  console.log("[bot] ensuring Qdrant collection...");
+  await ensureCollection();
+
+  const { token } = await getTgBotToken();
+  await restartBot(token);
+
+  return getRunningBot();
+}
