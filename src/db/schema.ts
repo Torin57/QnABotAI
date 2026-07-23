@@ -5,9 +5,15 @@ export const qnaItems = sqliteTable("qna_items", {
   question: text("question").notNull(),
   answer: text("answer"),
   sourceDocument: text("source_document"),
-  status: text("status", { enum: ["unanswered", "active", "deleted"] })
+  /**
+   * Lifecycle: `unanswered` | `not_helpful` → `active` → `deleted`.
+   * `not_helpful` — ученик нажал «Это не помогло»: ответ был, но не подошёл.
+   */
+  status: text("status", { enum: ["unanswered", "not_helpful", "active", "deleted"] })
     .notNull()
     .default("unanswered"),
+  /** Снапшот ответа, который ученик отверг (только для status="not_helpful"). */
+  rejectedAnswer: text("rejected_answer"),
   createdAt: int("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),

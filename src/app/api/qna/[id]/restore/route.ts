@@ -18,7 +18,12 @@ export async function POST(_request: NextRequest, { params }: Context) {
   }
 
   const hasAnswer = Boolean(item.answer && item.answer.trim());
-  const restoredStatus = hasAnswer ? "active" : "unanswered";
+  // Без ответа: запись с отвергнутым ответом возвращается в «Не помогло», остальные — в «Не отвечен»
+  const restoredStatus = hasAnswer
+    ? "active"
+    : item.rejectedAnswer
+      ? "not_helpful"
+      : "unanswered";
 
   await db.update(qnaItems).set({ status: restoredStatus }).where(eq(qnaItems.id, id));
 
