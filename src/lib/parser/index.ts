@@ -38,21 +38,28 @@ export async function processDocument(
   fileName: string
 ): Promise<number> {
   let pairs: { question: string; answer: string }[];
+  // Пары из Excel преподаватель готовил сам — сразу active + индексация.
+  // Пары, извлечённые LLM из документа, — черновики до одобрения (без индексации).
+  let isTrusted: boolean;
 
   if (mimeType === EXCEL_MIME) {
-    // Excel: read question-answer columns directly, no LLM needed
     pairs = await parseExcelQA(buffer);
+    isTrusted = true;
   } else {
-    // PDF / DOCX: extract text then use LLM
     const text = await extractTextFromBuffer(buffer, mimeType);
     pairs = await extractQAPairsFromText(text);
+    isTrusted = false;
   }
 
   pairs = enforceImportLimits(pairs);
 
   if (pairs.length === 0) return 0;
 
-  console.log(`[parser] inserting ${pairs.length} QnA items into SQLite (source: ${fileName})`);
+  const status = isTrusted ? ("active" as const) : ("draft" as const);
+
+  console.log(
+    `[parser] inserting ${pairs.length} QnA items as "${status}" into SQLite (source: ${fileName})`
+  );
 
   const inserted = await db
     .insert(qnaItems)
@@ -61,7 +68,7 @@ export async function processDocument(
         question: p.question,
         answer: p.answer,
         sourceDocument: fileName,
-        status: "active" as const,
+        status,
       }))
     )
     .returning({
@@ -69,6 +76,11 @@ export async function processDocument(
       question: qnaItems.question,
       answer: qnaItems.answer,
     });
+
+  if (!isTrusted) {
+    console.log(`[parser] ${inserted.length} drafts saved, awaiting moderation (${fileName})`);
+    return inserted.length;
+  }
 
   console.log(`[parser] SQLite insert done, indexing ${inserted.length} items in Qdrant...`);
 

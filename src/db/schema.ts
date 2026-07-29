@@ -6,10 +6,13 @@ export const qnaItems = sqliteTable("qna_items", {
   answer: text("answer"),
   sourceDocument: text("source_document"),
   /**
-   * Lifecycle: `unanswered` | `not_helpful` → `active` → `deleted`.
+   * Lifecycle: `unanswered` | `not_helpful` | `draft` → `active` → `deleted`.
    * `not_helpful` — ученик нажал «Это не помогло»: ответ был, но не подошёл.
+   * `draft` — пара извлечена ИИ из документа и ждёт одобрения преподавателя.
    */
-  status: text("status", { enum: ["unanswered", "not_helpful", "active", "deleted"] })
+  status: text("status", {
+    enum: ["unanswered", "not_helpful", "draft", "active", "deleted"],
+  })
     .notNull()
     .default("unanswered"),
   /** Снапшот ответа, который ученик отверг (только для status="not_helpful"). */

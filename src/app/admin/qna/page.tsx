@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useId, useRef, useMemo } from "react";
 import { useToast } from "@/components/Toast";
 
-type Status = "unanswered" | "not_helpful" | "active" | "deleted";
+type Status = "unanswered" | "not_helpful" | "draft" | "active" | "deleted";
 
 interface QnaItem {
   id: number;
@@ -18,6 +18,7 @@ interface QnaItem {
 const STATUS_LABEL: Record<Status, string> = {
   unanswered: "Не отвечен",
   not_helpful: "Не помогло",
+  draft: "Черновик",
   active: "Активен",
   deleted: "Удалён",
 };
@@ -25,6 +26,7 @@ const STATUS_LABEL: Record<Status, string> = {
 const STATUS_CLASS: Record<Status, string> = {
   unanswered: "bg-amber-50 text-amber-700 ring-amber-200",
   not_helpful: "bg-orange-50 text-orange-700 ring-orange-200",
+  draft: "bg-sky-50 text-sky-700 ring-sky-200",
   active: "bg-emerald-50 text-emerald-700 ring-emerald-200",
   deleted: "bg-rose-50 text-rose-700 ring-rose-200",
 };
@@ -32,11 +34,12 @@ const STATUS_CLASS: Record<Status, string> = {
 const STATUS_DOT: Record<Status, string> = {
   unanswered: "bg-amber-500",
   not_helpful: "bg-orange-500",
+  draft: "bg-sky-500",
   active: "bg-emerald-500",
   deleted: "bg-rose-500",
 };
 
-type Filter = "all" | "unanswered" | "not_helpful" | "active" | "deleted";
+type Filter = "all" | "unanswered" | "not_helpful" | "draft" | "active" | "deleted";
 type SortKey = "question" | "answer" | "createdAt";
 type SortDirection = "asc" | "desc";
 
@@ -44,6 +47,7 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: "all", label: "Все" },
   { key: "unanswered", label: "Неотвеченные" },
   { key: "not_helpful", label: "Не помогло" },
+  { key: "draft", label: "Черновики" },
   { key: "active", label: "Активные" },
   { key: "deleted", label: "Удалённые" },
 ];
@@ -107,6 +111,7 @@ function QnaPage() {
   const [creating, setCreating] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkPublishing, setBulkPublishing] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("createdAt");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const excelInputId = useId();
@@ -191,7 +196,13 @@ function QnaPage() {
       setUploadingFileName(null);
       if (res.ok) {
         await fetchItems();
-        toast.success(`Загружено ${data.imported} пар вопрос-ответ`);
+        if (file.name.toLowerCase().endsWith(".xlsx")) {
+          toast.success(`Загружено ${data.imported} пар вопрос-ответ`);
+        } else {
+          toast.success(
+            `Извлечено ${data.imported} пар — они во вкладке «Черновики», проверьте и опубликуйте`
+          );
+        }
       } else {
         toast.error(`Ошибка: ${data.error}`);
       }
@@ -337,6 +348,34 @@ function QnaPage() {
     }
   };
 
+  const bulkPublish = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setBulkPublishing(true);
+    try {
+      const res = await fetch("/api/qna/bulk-publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const data: { published?: number; skipped?: number; error?: string } = await res
+        .json()
+        .catch(() => ({}));
+      if (res.ok) {
+        await fetchItems();
+        const skippedNote = data.skipped ? `, пропущено без ответа: ${data.skipped}` : "";
+        toast.success(`Опубликовано записей: ${data.published ?? ids.length}${skippedNote}`);
+      } else {
+        toast.error(`Ошибка: ${data.error ?? "не удалось опубликовать"}`);
+      }
+    } catch (err) {
+      console.error("[QnA] bulkPublish ERROR", err);
+      toast.error("Ошибка при массовой публикации");
+    } finally {
+      setBulkPublishing(false);
+    }
+  };
+
   const startEdit = (item: QnaItem) => {
     setEditingId(item.id);
     setEditQ(item.question);
@@ -465,8 +504,8 @@ function QnaPage() {
           парами: колонка <code className="px-1 py-0.5 bg-slate-100 rounded">question</code> (вопрос) и{" "}
           <code className="px-1 py-0.5 bg-slate-100 rounded">answer</code> (ответ), каждая пара — отдельная строка.{" "}
           <span className="font-medium text-slate-600">«Загрузить документ»</span> — учебный материал в свободной
-          форме: PDF, DOCX, TXT (в том числе транскрипты уроков) или субтитры SRT/VTT; ИИ сам извлечёт из текста
-          пары вопрос-ответ и добавит их в базу знаний.
+          форме: PDF, DOCX, TXT (в том числе транскрипты уроков) или субтитры SRT/VTT; ИИ извлечёт из текста
+          пары вопрос-ответ и положит их во вкладку «Черновики» — проверьте их и опубликуйте.
         </p>
 
         {/* Bulk actions bar */}
@@ -479,15 +518,23 @@ function QnaPage() {
               <button
                 type="button"
                 onClick={() => setSelectedIds(new Set())}
-                disabled={bulkDeleting}
+                disabled={bulkDeleting || bulkPublishing}
                 className="px-3 py-1.5 text-xs font-medium text-blue-700 hover:text-blue-900 transition-colors disabled:opacity-60"
               >
                 Снять выделение
               </button>
               <button
                 type="button"
+                onClick={bulkPublish}
+                disabled={bulkDeleting || bulkPublishing}
+                className="px-3.5 py-1.5 text-xs font-medium bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition-colors disabled:opacity-60"
+              >
+                {bulkPublishing ? "Публикация..." : "Опубликовать выбранное"}
+              </button>
+              <button
+                type="button"
                 onClick={bulkDelete}
-                disabled={bulkDeleting}
+                disabled={bulkDeleting || bulkPublishing}
                 className="px-3.5 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-60"
               >
                 {bulkDeleting ? "Удаление..." : "Удалить выбранное"}
@@ -669,7 +716,8 @@ function QnaPage() {
                             ) : (
                               <>
                                 {(item.status === "unanswered" ||
-                                  item.status === "not_helpful") && (
+                                  item.status === "not_helpful" ||
+                                  item.status === "draft") && (
                                   <button
                                     onClick={() => publish(item.id)}
                                     className="px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
