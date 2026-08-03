@@ -13,4 +13,6 @@ if (!collection) {
 }
 
 export const COLLECTION = collection;
+/** Коллекция фрагментов учебных материалов (RAG-генерация ответов). */
+export const DOCS_COLLECTION = `${collection}_docs`;
 export const VECTOR_SIZE = 1024;

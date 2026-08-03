@@ -1,9 +1,15 @@
 import { db } from "@/db";
-import { qnaItems } from "@/db/schema";
-import { extractTextFromBuffer } from "./extractText";
+import { qnaItems, documents, docChunks } from "@/db/schema";
+import { eq, inArray } from "drizzle-orm";
+import {
+  extractTextFromBuffer,
+  isSubtitleMime,
+  subtitleCuesFromBuffer,
+} from "./extractText";
+import { chunksFromCues, chunksFromText, type DocChunkDraft } from "./chunks";
 import { extractQAPairsFromText } from "./extractQA";
 import { parseExcelQA } from "./excel";
-import { upsertQnaItem } from "@/lib/qdrant";
+import { upsertQnaItem, upsertDocChunk, deleteDocChunks } from "@/lib/qdrant";
 
 const EXCEL_MIME =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -32,6 +38,67 @@ function enforceImportLimits(
   }));
 }
 
+/**
+ * Сохраняет документ и его фрагменты как материал для генерации ответов.
+ * Повторная загрузка файла с тем же именем заменяет старую версию
+ * (типичный случай: преподаватель перезаписал урок).
+ */
+async function saveDocumentWithChunks(
+  fileName: string,
+  chunks: DocChunkDraft[]
+): Promise<number> {
+  const existing = await db
+    .select({ id: documents.id })
+    .from(documents)
+    .where(eq(documents.fileName, fileName));
+
+  if (existing.length > 0) {
+    const oldIds = existing.map((d) => d.id);
+    for (const oldId of oldIds) {
+      await deleteDocChunks(oldId);
+    }
+    await db.delete(docChunks).where(inArray(docChunks.documentId, oldIds));
+    await db.delete(documents).where(inArray(documents.id, oldIds));
+    console.log(`[parser] replaced previous version of document "${fileName}"`);
+  }
+
+  const [doc] = await db
+    .insert(documents)
+    .values({ fileName })
+    .returning({ id: documents.id });
+
+  if (chunks.length > 0) {
+    const inserted = await db
+      .insert(docChunks)
+      .values(
+        chunks.map((c, i) => ({
+          documentId: doc.id,
+          idx: i,
+          text: c.text,
+          startSeconds: c.startSeconds,
+        }))
+      )
+      .returning({
+        id: docChunks.id,
+        text: docChunks.text,
+        startSeconds: docChunks.startSeconds,
+      });
+
+    for (const chunk of inserted) {
+      await upsertDocChunk({
+        id: chunk.id,
+        documentId: doc.id,
+        fileName,
+        text: chunk.text,
+        startSeconds: chunk.startSeconds,
+      });
+    }
+  }
+
+  console.log(`[parser] document "${fileName}" saved with ${chunks.length} chunks`);
+  return doc.id;
+}
+
 export async function processDocument(
   buffer: Buffer,
   mimeType: string,
@@ -46,7 +113,23 @@ export async function processDocument(
     pairs = await parseExcelQA(buffer);
     isTrusted = true;
   } else {
-    const text = await extractTextFromBuffer(buffer, mimeType);
+    let text: string;
+    let chunks: DocChunkDraft[];
+
+    if (isSubtitleMime(mimeType)) {
+      // Субтитры: фрагменты с таймкодами, текст для LLM — те же реплики без таймкодов
+      const cues = subtitleCuesFromBuffer(buffer);
+      chunks = chunksFromCues(cues);
+      text = cues.map((c) => c.text).join("\n");
+    } else {
+      text = await extractTextFromBuffer(buffer, mimeType);
+      chunks = chunksFromText(text);
+    }
+
+    // Материал сохраняем до LLM-экстракции: даже если пары извлечь не удалось,
+    // документ пригодится для генерации ответов
+    await saveDocumentWithChunks(fileName, chunks);
+
     pairs = await extractQAPairsFromText(text);
     isTrusted = false;
   }

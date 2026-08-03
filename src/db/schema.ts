@@ -47,11 +47,36 @@ export const botLog = sqliteTable("bot_log", {
 });
 
 /**
+ * Загруженные учебные материалы (транскрипты, конспекты) — источник для
+ * генерации черновиков ответов (RAG). Хранится метаданные; текст — в `doc_chunks`.
+ * Повторная загрузка файла с тем же именем заменяет документ целиком.
+ */
+export const documents = sqliteTable("documents", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  fileName: text("file_name").notNull(),
+  createdAt: int("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+/** Фрагменты текста документа (~1000 символов) — единица RAG-поиска. */
+export const docChunks = sqliteTable("doc_chunks", {
+  id: int("id").primaryKey({ autoIncrement: true }),
+  documentId: int("document_id")
+    .notNull()
+    .references(() => documents.id, { onDelete: "cascade" }),
+  /** Порядок фрагмента внутри документа. */
+  idx: int("idx").notNull(),
+  text: text("text").notNull(),
+  /** Секунда начала фрагмента в видео (только для субтитров SRT/VTT, иначе NULL). */
+  startSeconds: int("start_seconds"),
+});
+
+/**
  * Настройки приложения (одна строка, id=1).
  * Модель/температура/промпт «Судьи» и ссылка «Связаться с преподавателем» — в БД,
  * чтобы менять из админки без правки .env. API-ключ Mistral по-прежнему только в .env.
- */
-export const appSettings = sqliteTable("app_settings", {
+ */export const appSettings = sqliteTable("app_settings", {
   id: int("id").primaryKey(),
   judgeModel: text("judge_model").notNull().default("mistral-small-latest"),
   judgeTemperature: real("judge_temperature").notNull().default(0),

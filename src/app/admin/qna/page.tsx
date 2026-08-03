@@ -112,6 +112,7 @@ function QnaPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkPublishing, setBulkPublishing] = useState(false);
+  const [generatingId, setGeneratingId] = useState<number | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("createdAt");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const excelInputId = useId();
@@ -382,6 +383,28 @@ function QnaPage() {
     setEditA(item.answer ?? "");
   };
 
+  /** Черновик ответа по загруженным материалам: результат открывается в режиме правки. */
+  const generateAnswer = async (item: QnaItem) => {
+    setGeneratingId(item.id);
+    try {
+      const res = await fetch(`/api/qna/${item.id}/generate`, { method: "POST" });
+      const data: { answer?: string; error?: string } = await res.json().catch(() => ({}));
+      if (res.ok && data.answer) {
+        setEditingId(item.id);
+        setEditQ(item.question);
+        setEditA(data.answer);
+        toast.success("Черновик готов — проверьте, поправьте и сохраните");
+      } else {
+        toast.error(data.error ?? "Не удалось сгенерировать ответ");
+      }
+    } catch (err) {
+      console.error("[QnA] generateAnswer ERROR", err);
+      toast.error("Ошибка при генерации ответа");
+    } finally {
+      setGeneratingId(null);
+    }
+  };
+
   const saveEdit = async () => {
     if (!editingId) return;
     setSaving(true);
@@ -635,7 +658,7 @@ function QnaPage() {
                               value={editQ}
                               onChange={(e) => setEditQ(e.target.value)}
                               rows={3}
-                              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                              className="w-full min-w-[16rem] px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                             />
                           ) : (
                             <p className="line-clamp-2 leading-relaxed" title={item.question}>
@@ -667,7 +690,7 @@ function QnaPage() {
                                   ? "Введите исправленный ответ"
                                   : undefined
                               }
-                              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                              className="w-full min-w-[24rem] px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                             />
                           ) : item.answer ? (
                             <p className="line-clamp-2 leading-relaxed" title={item.answer}>
@@ -715,6 +738,26 @@ function QnaPage() {
                               </button>
                             ) : (
                               <>
+                                {(item.status === "unanswered" ||
+                                  item.status === "not_helpful") && (
+                                  <button
+                                    onClick={() => generateAnswer(item)}
+                                    disabled={generatingId !== null}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-violet-600 text-white rounded-md hover:bg-violet-700 transition-colors disabled:opacity-60"
+                                  >
+                                    {generatingId === item.id ? (
+                                      <>
+                                        <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
+                                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                                        </svg>
+                                        Генерация...
+                                      </>
+                                    ) : (
+                                      "Сгенерировать ответ"
+                                    )}
+                                  </button>
+                                )}
                                 {(item.status === "unanswered" ||
                                   item.status === "not_helpful" ||
                                   item.status === "draft") && (
