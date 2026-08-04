@@ -119,7 +119,7 @@ export function createBot(token: string) {
         return;
       }
 
-      await logUnanswered(original.question);
+      await logNotHelpful(original.question, original.answer);
       await db.insert(botLog).values({
         question: original.question,
         candidates: original.candidates,
@@ -251,6 +251,17 @@ async function logUnanswered(questionText: string) {
   await db.insert(qnaItems).values({
     question: questionText,
     status: "unanswered",
+  });
+}
+
+/** Ученик отверг выданный ответ: сохраняем вопрос вместе со снапшотом отвергнутого ответа. */
+async function logNotHelpful(questionText: string, rejectedAnswer: string | null) {
+  console.log("[bot] logging not_helpful question");
+
+  await db.insert(qnaItems).values({
+    question: questionText,
+    status: "not_helpful",
+    rejectedAnswer,
   });
 }
 

@@ -31,7 +31,6 @@ export function AdminNav() {
   const [botTokenInput, setBotTokenInput] = useState("");
   const [botMaskedToken, setBotMaskedToken] = useState("");
   const [botUsername, setBotUsername] = useState<string | null>(null);
-  const [botSource, setBotSource] = useState<"env" | "settings" | "">("");
   const [botResetToEnv, setBotResetToEnv] = useState(false);
   const [loadingSettings, setLoadingSettings] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -87,7 +86,6 @@ export function AdminNav() {
           );
           setBotMaskedToken(typeof botData.maskedToken === "string" ? botData.maskedToken : "");
           setBotUsername(typeof botData.username === "string" ? botData.username : null);
-          setBotSource(botData.source === "settings" || botData.source === "env" ? botData.source : "");
           setBotTokenInput("");
           setBotResetToEnv(false);
         }
@@ -202,9 +200,6 @@ export function AdminNav() {
     }
   }
 
-  const botSourceLabel =
-    botSource === "settings" ? "из настроек" : botSource === "env" ? "из .env сервера" : "";
-
   return (
     <>
       <nav className="flex items-center gap-1 w-full">
@@ -294,7 +289,9 @@ export function AdminNav() {
                       className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                     />
                     <p className="mt-1.5 text-xs text-slate-400">
-                      Например: mistral-small-latest или mistral-large-latest
+                      Действует только для «Судьи» — выбора ответа на вопрос ученика в боте.
+                      Пока поддерживаются только модели Mistral, например mistral-small-latest
+                      или mistral-large-latest.
                     </p>
                   </div>
                   <div>
@@ -366,16 +363,10 @@ export function AdminNav() {
                         <span>
                           Сейчас:{" "}
                           <span className="font-medium text-slate-900">@{botUsername}</span>
-                          {botSourceLabel ? (
-                            <span className="text-slate-400"> · {botSourceLabel}</span>
-                          ) : null}
                         </span>
                       ) : (
                         <span>Текущий токен: {botMaskedToken || "не определён"}</span>
                       )}
-                      {botMaskedToken ? (
-                        <div className="mt-1 font-mono text-xs text-slate-400">{botMaskedToken}</div>
-                      ) : null}
                       {botResetToEnv ? (
                         <div className="mt-1.5 text-xs text-amber-700">
                           После сохранения вернётся токен из .env сервера

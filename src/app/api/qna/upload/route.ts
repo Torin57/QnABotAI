@@ -6,7 +6,12 @@ const ALLOWED_TYPES = [
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "text/plain",
+  "application/x-subrip",
+  "text/vtt",
 ];
+
+const TEXT_TYPES = ["text/plain", "application/x-subrip", "text/vtt"];
 
 function mimeFromFileName(name: string): string | null {
   const lower = name.toLowerCase();
@@ -15,20 +20,42 @@ function mimeFromFileName(name: string): string | null {
   if (lower.endsWith(".docx"))
     return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
   if (lower.endsWith(".pdf")) return "application/pdf";
+  if (lower.endsWith(".txt")) return "text/plain";
+  if (lower.endsWith(".srt")) return "application/x-subrip";
+  if (lower.endsWith(".vtt")) return "text/vtt";
   return null;
 }
 
-/** Браузеры часто отдают пустой или generic type; доверяем расширению после проверки allowlist. */
+/** Браузеры часто отдают пустой или generic type; расширение надёжнее.
+ * Например, .srt браузер может отдать как text/plain — тогда файл не пройдёт
+ * очистку от таймкодов. Поэтому сначала смотрим на расширение. */
 function resolveEffectiveMime(file: File): string | null {
-  if (file.type && ALLOWED_TYPES.includes(file.type)) return file.type;
   const inferred = mimeFromFileName(file.name);
   if (inferred && ALLOWED_TYPES.includes(inferred)) return inferred;
+  if (file.type && ALLOWED_TYPES.includes(file.type)) return file.type;
   return null;
 }
 
-/** Проверка magic bytes: содержимое должно соответствовать заявленному типу.
- * PDF начинается с "%PDF", docx/xlsx — это ZIP-архивы ("PK\x03\x04"). */
-function matchesMagicBytes(buffer: Buffer, mimeType: string): boolean {
+/** Проверка содержимого: файл должен соответствовать заявленному типу.
+ * PDF начинается с "%PDF", docx/xlsx — это ZIP-архивы ("PK\x03\x04").
+ * Текстовые форматы magic bytes не имеют — проверяем, что это валидный UTF-8
+ * без NUL-байтов; VTT дополнительно обязан начинаться с "WEBVTT". */
+function matchesContent(buffer: Buffer, mimeType: string): boolean {
+  if (TEXT_TYPES.includes(mimeType)) {
+    if (buffer.length === 0) return false;
+    if (buffer.includes(0)) return false; // NUL-байт — признак бинарника
+    let text: string;
+    try {
+      text = new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+    } catch {
+      return false;
+    }
+    if (mimeType === "text/vtt") {
+      return text.replace(/^\uFEFF/, "").startsWith("WEBVTT");
+    }
+    return true;
+  }
+
   if (buffer.length < 4) return false;
   if (mimeType === "application/pdf") {
     return buffer.subarray(0, 4).toString("latin1") === "%PDF";
@@ -51,7 +78,7 @@ export async function POST(request: NextRequest) {
 
   const buffer = Buffer.from(await file.arrayBuffer());
 
-  if (!matchesMagicBytes(buffer, effectiveMime))
+  if (!matchesContent(buffer, effectiveMime))
     return NextResponse.json(
       { error: "Содержимое файла не соответствует его типу" },
       { status: 400 }

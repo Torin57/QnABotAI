@@ -39,6 +39,8 @@ dist/
 # =========================
 
 *.tsbuildinfo
+# Next.js regenerates this; path flips between .next/types and .next/dev/types
+next-env.d.ts
 
 # =========================
 # Databases / storage

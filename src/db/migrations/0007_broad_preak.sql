@@ -1,0 +1,1 @@
+ALTER TABLE `qna_items` ADD `rejected_answer` text;

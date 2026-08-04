@@ -4,7 +4,7 @@ import { qnaItems } from "@/db/schema";
 import { and, eq, gte, lte, ne, type SQL } from "drizzle-orm";
 import { upsertQnaItem } from "@/lib/qdrant";
 
-const STATUS_VALUES = ["unanswered", "active", "deleted"] as const;
+const STATUS_VALUES = ["unanswered", "not_helpful", "draft", "active", "deleted"] as const;
 type StatusValue = (typeof STATUS_VALUES)[number];
 
 export async function GET(request: NextRequest) {
