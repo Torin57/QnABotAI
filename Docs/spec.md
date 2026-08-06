@@ -218,7 +218,7 @@ Read-only список последних 200 обращений к боту (`G
 
 **Миграция с одного `.env`:** скопировать секреты в `.env.development.local`; на prod-сервере создать `.env.production.local` с новым ботом и своими `SESSION_SECRET` / паролем админки.
 
-**Раздельные рабочие папки на одном сервере:** прод — клон репозитория, из которого работает systemd-сервис `qnabotai` (код туда попадает только через `git pull && npm ci && npm run build && systemctl restart qnabotai`); дев — отдельный клон (`~/workspace/QnABotAI-dev`) со своими `.env.development.local` (включая `PORT=3001`) и `data/logs-dev.db`. Запускать `next dev` из прод-папки нельзя — он перезапишет прод-сборку в `.next/`.
+**Раздельные рабочие папки на одном сервере:** прод — клон репозитория на ветке `main`, из которого работает systemd-сервис `qnabotai` (код туда попадает только через деплой, полный порядок — §7.4); дев — отдельный клон (`~/workspace/QnABotAI-dev`) со своими `.env.development.local` (включая `PORT=3001`) и `data/logs-dev.db`. Запускать `next dev` из прод-папки нельзя — он перезапишет прод-сборку в `.next/`.
 
 ### 7.2 Прочее
 - Секреты только в gitignored `.env.*.local` (см. §7.1), не в репозитории.
@@ -246,3 +246,22 @@ Read-only список последних 200 обращений к боту (`G
 5. Запуск и smoke-тест бота/админки.
 
 `npm run qdrant:reindex` (`scripts/reindex.ts`) применим и отдельно — при потере/порче `qdrant_storage/` без потери SQLite, или при рассинхроне индекса с базой. Восстанавливает обе коллекции: пары вопрос-ответ и фрагменты материалов (`{QDRANT_COLLECTION}_docs`).
+
+### 7.4 Деплой на production
+
+**Ветки.** Работа идёт в `dev`, прод живёт на `main`. Код попадает в `main` только через PR `dev → main` (merge-коммит, не squash — история `main` остаётся сопоставимой с `dev`). Прод-папка ветку никогда не меняет руками: `git checkout main` + `git pull --ff-only`.
+
+**Порядок (production, `~/workspace/QnABotAI`):**
+1. `sudo systemctl stop qnabotai` — **до** `git pull`. Иначе между `pull` и миграциями на диске лежит новый код при старой схеме, и автоперезапуск юнита поднимет его на неготовой базе.
+2. Бэкап БД: `sqlite3 data/logs-prod.db ".backup 'backups/logs-prod-<дата>.db'"` + `gzip` + `.sha256` (либо убедиться, что свежий ночной бэкап актуален).
+3. `git checkout main && git pull --ff-only origin main`.
+4. `npm ci` — строго по `package-lock.json`; **не** `npm install` и **не** `npm audit fix` на проде: обновления зависимостей делаются в `dev`, проверяются там и приезжают через PR.
+5. `APP_ENV=production npm run db:migrate` — миграции применяются **до** сборки: `next build` на этапе сбора данных страниц открывает базу и на старой схеме может упасть.
+6. `npm run build` (в проде работает без ухищрений: Next сам подхватывает `.env.production.local`).
+7. `sudo systemctl start qnabotai`.
+
+**Проверка после запуска:** `systemctl is-active qnabotai`; логи старта (`journalctl -u qnabotai`) должны содержать `[server] database: …`, `[server] qdrant collection: …`, `[bot] started`, `[server] ready on …`; роуты: `/` и `/admin` → `307`, `/admin/login` → `200`, `/api/qna` без сессии → `401`; затем ручная проверка админки и бота.
+
+**Проверка уязвимостей** (`npm audit`) — часть подготовки релиза, выполняется в `dev` перед PR, не на проде.
+
+> `sudo` есть только у пользователя, поэтому шаги 1 и 7 агент не выполняет.
