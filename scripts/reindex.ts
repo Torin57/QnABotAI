@@ -8,8 +8,8 @@
  * - DOCS_COLLECTION — фрагменты учебных материалов (`doc_chunks` + `documents`).
  *
  * Коллекции пересоздаются с нуля, чтобы не осталось устаревших точек.
- * Эмбеддинги считаются последовательно — при 429 от Mistral сработает
- * встроенный retry в embedText.
+ * Фрагменты индексируются пачками (эмбеддинги одним запросом на пачку),
+ * при 429 от Mistral сработает встроенный retry.
  */
 import { eq } from "drizzle-orm";
 import { db } from "../src/db";
@@ -19,7 +19,7 @@ import {
   ensureCollection,
   ensureDocsCollection,
   upsertQnaItem,
-  upsertDocChunk,
+  upsertDocChunks,
 } from "../src/lib/qdrant";
 
 async function recreate(name: string, ensure: () => Promise<void>): Promise<void> {
@@ -70,19 +70,19 @@ async function reindexDocs(): Promise<void> {
   await recreate(DOCS_COLLECTION, ensureDocsCollection);
 
   let done = 0;
-  for (const chunk of chunks) {
-    await upsertDocChunk({
+  await upsertDocChunks(
+    chunks.map((chunk) => ({
       id: chunk.id,
       documentId: chunk.documentId,
       fileName: fileNameById.get(chunk.documentId) ?? "",
       text: chunk.text,
       startSeconds: chunk.startSeconds,
-    });
-    done++;
-    if (done % 25 === 0 || done === chunks.length) {
+    })),
+    (indexed) => {
+      done = indexed;
       console.log(`  проиндексировано ${done}/${chunks.length}`);
     }
-  }
+  );
 
   console.log(`Готово: ${done} фрагментов в коллекции "${DOCS_COLLECTION}".`);
 }

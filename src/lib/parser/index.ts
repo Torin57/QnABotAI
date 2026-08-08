@@ -9,7 +9,7 @@ import {
 import { chunksFromCues, chunksFromText, type DocChunkDraft } from "./chunks";
 import { extractQAPairsFromText } from "./extractQA";
 import { parseExcelQA } from "./excel";
-import { upsertQnaItem, upsertDocChunk, deleteDocChunks } from "@/lib/qdrant";
+import { upsertQnaItem, upsertDocChunks, deleteDocChunks } from "@/lib/qdrant";
 
 const EXCEL_MIME =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -42,6 +42,10 @@ function enforceImportLimits(
  * Сохраняет документ и его фрагменты как материал для генерации ответов.
  * Повторная загрузка файла с тем же именем заменяет старую версию
  * (типичный случай: преподаватель перезаписал урок).
+ *
+ * Возвращает число фрагментов, попавших в поисковый индекс. Оно меньше
+ * `chunks.length`, если индексация сорвалась: материал при этом уже в SQLite,
+ * индекс восстанавливается `npm run qdrant:reindex`.
  */
 async function saveDocumentWithChunks(
   fileName: string,
@@ -67,6 +71,8 @@ async function saveDocumentWithChunks(
     .values({ fileName })
     .returning({ id: documents.id });
 
+  let indexedChunks = 0;
+
   if (chunks.length > 0) {
     const inserted = await db
       .insert(docChunks)
@@ -84,30 +90,54 @@ async function saveDocumentWithChunks(
         startSeconds: docChunks.startSeconds,
       });
 
-    for (const chunk of inserted) {
-      await upsertDocChunk({
-        id: chunk.id,
-        documentId: doc.id,
-        fileName,
-        text: chunk.text,
-        startSeconds: chunk.startSeconds,
-      });
+    try {
+      await upsertDocChunks(
+        inserted.map((chunk) => ({
+          id: chunk.id,
+          documentId: doc.id,
+          fileName,
+          text: chunk.text,
+          startSeconds: chunk.startSeconds,
+        })),
+        (indexed) => {
+          indexedChunks = indexed;
+        }
+      );
+    } catch (err) {
+      // Материал уже разобран и лежит в SQLite, поэтому извлечение пар
+      // продолжается: терять черновики из-за сбоя индексации незачем.
+      console.error(
+        `[parser] indexing of "${fileName}" failed after ${indexedChunks}/${chunks.length} chunks`,
+        err
+      );
     }
   }
 
-  console.log(`[parser] document "${fileName}" saved with ${chunks.length} chunks`);
-  return doc.id;
+  console.log(
+    `[parser] document "${fileName}" saved with ${chunks.length} chunks (indexed ${indexedChunks})`
+  );
+  return indexedChunks;
 }
+
+export type ProcessResult = {
+  /** Сколько пар вопрос-ответ создано. */
+  imported: number;
+  /** Фрагменты материала: сколько получилось при разборе и сколько дошло
+   * до поискового индекса. Расхождение означает неполный поиск по лекции. */
+  chunks: { total: number; indexed: number };
+};
 
 export async function processDocument(
   buffer: Buffer,
   mimeType: string,
   fileName: string
-): Promise<number> {
+): Promise<ProcessResult> {
   let pairs: { question: string; answer: string }[];
   // Пары из Excel преподаватель готовил сам — сразу active + индексация.
   // Пары, извлечённые LLM из документа, — черновики до одобрения (без индексации).
   let isTrusted: boolean;
+  // Excel — это готовые пары, материала для поиска по лекции там нет
+  let chunkStats = { total: 0, indexed: 0 };
 
   if (mimeType === EXCEL_MIME) {
     pairs = await parseExcelQA(buffer);
@@ -128,7 +158,8 @@ export async function processDocument(
 
     // Материал сохраняем до LLM-экстракции: даже если пары извлечь не удалось,
     // документ пригодится для генерации ответов
-    await saveDocumentWithChunks(fileName, chunks);
+    const indexed = await saveDocumentWithChunks(fileName, chunks);
+    chunkStats = { total: chunks.length, indexed };
 
     pairs = await extractQAPairsFromText(text);
     isTrusted = false;
@@ -136,7 +167,7 @@ export async function processDocument(
 
   pairs = enforceImportLimits(pairs);
 
-  if (pairs.length === 0) return 0;
+  if (pairs.length === 0) return { imported: 0, chunks: chunkStats };
 
   const status = isTrusted ? ("active" as const) : ("draft" as const);
 
@@ -162,7 +193,7 @@ export async function processDocument(
 
   if (!isTrusted) {
     console.log(`[parser] ${inserted.length} drafts saved, awaiting moderation (${fileName})`);
-    return inserted.length;
+    return { imported: inserted.length, chunks: chunkStats };
   }
 
   console.log(`[parser] SQLite insert done, indexing ${inserted.length} items in Qdrant...`);
@@ -174,5 +205,5 @@ export async function processDocument(
 
   console.log(`[parser] Qdrant indexing complete (${inserted.length} items from ${fileName})`);
 
-  return inserted.length;
+  return { imported: inserted.length, chunks: chunkStats };
 }

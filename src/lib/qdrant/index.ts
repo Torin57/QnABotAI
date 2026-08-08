@@ -23,32 +23,111 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function embedText(text: string): Promise<number[]> {
-  const maxRetries = 3;
-  let lastError: unknown;
+/** Лимит Mistral — 60 запросов в минуту, поэтому тексты идут пачками, а не по одному.
+ * Ограничение и по количеству, и по объёму: у `mistral-embed` окно 8192 токена на вход. */
+const EMBED_BATCH_SIZE = 32;
+const EMBED_BATCH_CHARS = 32_000;
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+function splitIntoBatches(texts: string[]): string[][] {
+  const batches: string[][] = [];
+  let batch: string[] = [];
+  let batchChars = 0;
+
+  for (const text of texts) {
+    if (batch.length > 0 && (batch.length >= EMBED_BATCH_SIZE || batchChars + text.length > EMBED_BATCH_CHARS)) {
+      batches.push(batch);
+      batch = [];
+      batchChars = 0;
+    }
+    batch.push(text);
+    batchChars += text.length;
+  }
+  if (batch.length > 0) batches.push(batch);
+
+  return batches;
+}
+
+/** Не быстрее одного запроса эмбеддингов в секунду (лимит Mistral — 60 в минуту).
+ * Вызовы выстраиваются в очередь: параллельные загрузка и вопрос в боте
+ * не дают всплеска, а тратят общий бюджет по очереди. */
+const EMBED_MIN_INTERVAL_MS = 1000;
+let embedQueue: Promise<unknown> = Promise.resolve();
+let lastEmbedStartedAt = 0;
+
+function throttled<T>(task: () => Promise<T>): Promise<T> {
+  const result = embedQueue.then(async () => {
+    const wait = lastEmbedStartedAt + EMBED_MIN_INTERVAL_MS - Date.now();
+    if (wait > 0) await sleep(wait);
+    lastEmbedStartedAt = Date.now();
+    return task();
+  });
+
+  // Очередь не должна рваться из-за ошибки одного вызова
+  embedQueue = result.catch(() => {});
+  return result;
+}
+
+/** Задержки перед повтором после 429. Сумма (65 с) заведомо больше минутного
+ * окна Mistral, поэтому квота успевает сброситься. */
+const EMBED_RETRY_DELAYS_MS = [5_000, 15_000, 45_000];
+
+function statusCodeOf(err: unknown): number | null {
+  if (!err || typeof err !== "object" || !("statusCode" in err)) return null;
+  const code = (err as { statusCode: unknown }).statusCode;
+  return typeof code === "number" ? code : null;
+}
+
+/** Если Mistral прислал Retry-After — он точнее нашей лестницы задержек. */
+function retryAfterMs(err: unknown): number | null {
+  if (!err || typeof err !== "object" || !("headers" in err)) return null;
+  const headers = (err as { headers?: { get?: (name: string) => string | null } }).headers;
+  const raw = headers?.get?.("retry-after");
+  if (!raw) return null;
+
+  const seconds = Number(raw);
+  if (!Number.isFinite(seconds) || seconds < 0) return null;
+  return Math.min(seconds, 65) * 1000;
+}
+
+async function embedBatch(texts: string[]): Promise<number[][]> {
+  for (let attempt = 0; ; attempt++) {
     try {
-      const response = await mistral.embeddings.create({
-        model: "mistral-embed",
-        inputs: [text],
-      });
-      return response.data[0].embedding!;
+      const response = await throttled(() =>
+        mistral.embeddings.create({
+          model: "mistral-embed",
+          inputs: texts,
+        })
+      );
+      // Порядок в ответе не гарантирован — восстанавливаем по index
+      return response.data
+        .slice()
+        .sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
+        .map((d) => d.embedding!);
     } catch (err) {
-      lastError = err;
-      const statusCode =
-        err && typeof err === "object" && "statusCode" in err
-          ? (err as { statusCode: number }).statusCode
-          : null;
-      if (statusCode === 429 && attempt < maxRetries) {
-        await sleep(1000 * 2 ** attempt);
-        continue;
-      }
-      throw err;
+      const isLastAttempt = attempt >= EMBED_RETRY_DELAYS_MS.length;
+      if (statusCodeOf(err) !== 429 || isLastAttempt) throw err;
+
+      const delay = retryAfterMs(err) ?? EMBED_RETRY_DELAYS_MS[attempt];
+      console.warn(
+        `[embed] 429 от Mistral, повтор через ${Math.round(delay / 1000)} с ` +
+          `(попытка ${attempt + 1} из ${EMBED_RETRY_DELAYS_MS.length})`
+      );
+      await sleep(delay);
     }
   }
+}
 
-  throw lastError;
+export async function embedTexts(texts: string[]): Promise<number[][]> {
+  const vectors: number[][] = [];
+  for (const batch of splitIntoBatches(texts)) {
+    vectors.push(...(await embedBatch(batch)));
+  }
+  return vectors;
+}
+
+export async function embedText(text: string): Promise<number[]> {
+  const [vector] = await embedTexts([text]);
+  return vector;
 }
 
 export async function upsertQnaItem(item: {
@@ -107,30 +186,48 @@ export async function searchQna(
   }));
 }
 
-/** Индексация фрагмента учебного материала (точка = doc_chunks.id). */
-export async function upsertDocChunk(chunk: {
+export type DocChunkPoint = {
   id: number;
   documentId: number;
   fileName: string;
   text: string;
   startSeconds: number | null;
-}): Promise<void> {
+};
+
+/** Индексация фрагментов учебного материала (точка = doc_chunks.id).
+ * Эмбеддинги считаются пачками: транскрипт на 100+ фрагментов иначе упирается
+ * в лимит запросов Mistral и обрывает загрузку на середине.
+ * Каждая пачка пишется в Qdrant сразу, поэтому сбой на середине сохраняет
+ * уже проиндексированное; `onProgress` сообщает вызывающему, сколько успело дойти. */
+export async function upsertDocChunks(
+  chunks: DocChunkPoint[],
+  onProgress?: (indexed: number) => void
+): Promise<void> {
+  if (chunks.length === 0) return;
+
   await ensureDocsCollection();
-  const vector = await embedText(chunk.text);
-  await qdrant.upsert(DOCS_COLLECTION, {
-    points: [
-      {
+
+  let indexed = 0;
+  for (let i = 0; i < chunks.length; i += EMBED_BATCH_SIZE) {
+    const batch = chunks.slice(i, i + EMBED_BATCH_SIZE);
+    const vectors = await embedTexts(batch.map((c) => c.text));
+
+    await qdrant.upsert(DOCS_COLLECTION, {
+      points: batch.map((chunk, j) => ({
         id: chunk.id,
-        vector,
+        vector: vectors[j],
         payload: {
           documentId: chunk.documentId,
           fileName: chunk.fileName,
           text: chunk.text,
           startSeconds: chunk.startSeconds,
         },
-      },
-    ],
-  });
+      })),
+    });
+
+    indexed += batch.length;
+    onProgress?.(indexed);
+  }
 }
 
 /** Удаление всех фрагментов документа из индекса (по payload.documentId). */

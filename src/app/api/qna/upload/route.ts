@@ -85,8 +85,8 @@ export async function POST(request: NextRequest) {
     );
 
   try {
-    const count = await processDocument(buffer, effectiveMime, file.name);
-    return NextResponse.json({ imported: count });
+    const result = await processDocument(buffer, effectiveMime, file.name);
+    return NextResponse.json(result);
   } catch (err) {
     if (err instanceof ImportLimitError)
       return NextResponse.json({ error: err.message }, { status: 400 });
