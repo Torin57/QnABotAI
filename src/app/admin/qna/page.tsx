@@ -183,7 +183,11 @@ function QnaPage() {
       body.append("file", file);
       const res = await fetch("/api/qna/upload", { method: "POST", body });
       const bodyText = await res.text();
-      const data: { imported?: number; error?: string } = bodyText
+      const data: {
+        imported?: number;
+        chunks?: { total: number; indexed: number };
+        error?: string;
+      } = bodyText
         ? (() => {
             try {
               return JSON.parse(bodyText);
@@ -203,6 +207,13 @@ function QnaPage() {
           toast.success(
             `Извлечено ${data.imported} пар — они во вкладке «Черновики», проверьте и опубликуйте`
           );
+          const chunks = data.chunks;
+          if (chunks && chunks.indexed < chunks.total) {
+            toast.error(
+              `Материал сохранён, но в поиск попало ${chunks.indexed} из ${chunks.total} фрагментов — ` +
+                `ответы по этой лекции будут неполными, нужна переиндексация`
+            );
+          }
         }
       } else {
         toast.error(`Ошибка: ${data.error}`);
